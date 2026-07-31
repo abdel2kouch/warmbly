@@ -32,7 +32,7 @@
 # To run on Kafka + S3 instead, overlay docker-compose.kafka.yml (see that file).
 
 x-selfhost-env: &selfhost-env
-  APP_ENV: production
+  APP_ENV: ${APP_ENV:-dev}
   AWS_CONFIG_ENABLED: "false"
   EVENTBUS_PROVIDER: nats
   NATS_URL: nats://nats:4222
@@ -213,7 +213,7 @@ services:
     # isolated Compose network, so publishing a host port is unnecessary.
     expose: ["3000"]
     environment:
-      APP_ENV: production
+      APP_ENV: ${APP_ENV:-dev}
       AWS_CONFIG_ENABLED: "false"
       TRACKING_HOST: "0.0.0.0"
       TRACKING_PORT: "3000"
@@ -277,7 +277,7 @@ services:
     environment:
       WARMBLY_API_URL: https://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       WARMBLY_DASHBOARD_URL: https://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
-      WARMBLY_ENV_LABEL: production
+      WARMBLY_ENV_LABEL: ${ENV_LABEL:-development}
       WARMBLY_TURNSTILE_KEY: "1x00000000000000000000AA"
     depends_on:
       backend: { condition: service_healthy }
