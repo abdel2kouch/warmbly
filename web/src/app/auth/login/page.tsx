@@ -576,7 +576,6 @@ export default function LoginPage() {
                     onError={onTurnstileError}
                     onTimeout={onTurnstileError}
                     onExpire={() => { tokenRef.current = ""; turnstileRef.current?.reset(); }}
-                    size="invisible"
                 />
             )}
         </div>

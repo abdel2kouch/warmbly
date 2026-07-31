@@ -61,7 +61,10 @@ export function TurnstileModal({ visible, onToken }: Props) {
         sitekey: TURNSTILE_KEY,
         onVerify: handleVerify,
         onExpire: () => { tokenRef.current = ""; turnstileRef.current?.reset(); },
-        size: "invisible" as const,
+        // Cloudflare only accepts normal, compact, or flexible for `size`.
+        // `execution="execute"` controls deferred execution; an "invisible"
+        // size is rejected by the current Turnstile API.
+        execution: "execute" as const,
     };
     return <Turnstile {...(turnstileProps as unknown as React.ComponentProps<typeof Turnstile>)} />;
 }
