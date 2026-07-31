@@ -42,7 +42,8 @@ x-selfhost-env: &selfhost-env
   CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
   BLOB_PROVIDER: filesystem
   BLOB_FS_ROOT: /data/blobs
-  BLOB_PUBLIC_BASE_URL: ${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}/public
+  # Dokploy public route (Traefik terminates the browser-facing connection).
+  BLOB_PUBLIC_BASE_URL: http://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io/public
   TASKS_PROVIDER: local
   BILLING_PROVIDER: none
   CAPTCHA_PROVIDER: none
@@ -139,15 +140,15 @@ services:
       GIN_MODE: release
       # To reach Warmbly from another machine, set PUBLIC_HOST=<ip-or-domain> in
       # .env — every URL below derives from it. Or set each URL explicitly.
-      APP_URL: ${APP_URL:-http://${PUBLIC_HOST:-localhost}:5173}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://${PUBLIC_HOST:-localhost}:5173,http://${PUBLIC_HOST:-localhost}:5174}
-      WEBSOCKET_URL: ${WEBSOCKET_URL:-ws://${PUBLIC_HOST:-localhost}:4000/socket/websocket}
+      APP_URL: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      CORS_ALLOW_ORIGINS: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io,http://admin.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WEBSOCKET_URL: ws://realtime.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io/socket/websocket
       ENCRYPTED_KEYS_PROVIDER: postgres
       EMAIL_NAME: ${EMAIL_NAME:-Warmbly}
       EMAIL_ADDRESS: ${EMAIL_ADDRESS:-noreply@warmbly.local}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
-      TRACKING_DOMAIN: ${TRACKING_DOMAIN:-${PUBLIC_HOST:-localhost}:3000}
+      TRACKING_DOMAIN: tracking.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       GEODB_PATH: /app/data/GeoLite2-City.mmdb
       # Gmail mailbox OAuth (leave unset to connect only SMTP/IMAP + Outlook
       # mailboxes). See the self-hosting docs for the Google Cloud setup.
@@ -208,7 +209,9 @@ services:
     build:
       context: ./tracking
       dockerfile: Dockerfile
-    ports: ["3000:3000"]
+    # Dokploy itself owns host port 3000. Traefik reaches this service on the
+    # isolated Compose network, so publishing a host port is unnecessary.
+    expose: ["3000"]
     environment:
       APP_ENV: ${APP_ENV:-dev}
       AWS_CONFIG_ENABLED: "false"
@@ -232,7 +235,7 @@ services:
       dockerfile: deploy/docker/realtime.Dockerfile
     ports: ["4000:4000"]
     environment:
-      PHX_HOST: ${PHX_HOST:-${PUBLIC_HOST:-localhost}}
+      PHX_HOST: realtime.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       PORT: 4000
       DATABASE_URL: postgres://warmbly:warmbly@postgres:5432/warmbly_dev?sslmode=disable
       DATABASE_SSL: "false"
@@ -257,9 +260,9 @@ services:
       dockerfile: Dockerfile
     ports: ["5173:80"]
     environment:
-      WARMBLY_API_URL: ${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}
-      WARMBLY_APP_URL: ${APP_URL:-http://${PUBLIC_HOST:-localhost}:5173}
-      WARMBLY_TRACKING_DOMAIN: ${TRACKING_DOMAIN:-${PUBLIC_HOST:-localhost}:3000}
+      WARMBLY_API_URL: http://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WARMBLY_APP_URL: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WARMBLY_TRACKING_DOMAIN: tracking.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       # Captcha is off server-side (CAPTCHA_PROVIDER=none); this Cloudflare test
       # key keeps the widget satisfied without a real key.
       WARMBLY_TURNSTILE_KEY: "1x00000000000000000000AA"
@@ -272,8 +275,8 @@ services:
       dockerfile: Dockerfile
     ports: ["5174:80"]
     environment:
-      WARMBLY_API_URL: ${API_PUBLIC_URL:-http://${PUBLIC_HOST:-localhost}:8080}
-      WARMBLY_DASHBOARD_URL: ${APP_URL:-http://${PUBLIC_HOST:-localhost}:5173}
+      WARMBLY_API_URL: http://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WARMBLY_DASHBOARD_URL: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       WARMBLY_ENV_LABEL: ${ENV_LABEL:-development}
       WARMBLY_TURNSTILE_KEY: "1x00000000000000000000AA"
     depends_on:
