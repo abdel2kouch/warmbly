@@ -43,7 +43,7 @@ x-selfhost-env: &selfhost-env
   BLOB_PROVIDER: filesystem
   BLOB_FS_ROOT: /data/blobs
   # Dokploy public route (Traefik terminates the browser-facing connection).
-  BLOB_PUBLIC_BASE_URL: http://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io/public
+  BLOB_PUBLIC_BASE_URL: https://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io/public
   TASKS_PROVIDER: local
   BILLING_PROVIDER: none
   CAPTCHA_PROVIDER: none
@@ -140,9 +140,9 @@ services:
       GIN_MODE: release
       # To reach Warmbly from another machine, set PUBLIC_HOST=<ip-or-domain> in
       # .env — every URL below derives from it. Or set each URL explicitly.
-      APP_URL: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
-      CORS_ALLOW_ORIGINS: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io,http://admin.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
-      WEBSOCKET_URL: ws://realtime.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io/socket/websocket
+      APP_URL: https://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      CORS_ALLOW_ORIGINS: https://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io,https://admin.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WEBSOCKET_URL: wss://realtime.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io/socket/websocket
       ENCRYPTED_KEYS_PROVIDER: postgres
       EMAIL_NAME: ${EMAIL_NAME:-Warmbly}
       EMAIL_ADDRESS: ${EMAIL_ADDRESS:-noreply@warmbly.local}
@@ -260,8 +260,8 @@ services:
       dockerfile: Dockerfile
     ports: ["5173:80"]
     environment:
-      WARMBLY_API_URL: http://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
-      WARMBLY_APP_URL: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WARMBLY_API_URL: https://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WARMBLY_APP_URL: https://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       WARMBLY_TRACKING_DOMAIN: tracking.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       # Captcha is off server-side (CAPTCHA_PROVIDER=none); this Cloudflare test
       # key keeps the widget satisfied without a real key.
@@ -275,8 +275,8 @@ services:
       dockerfile: Dockerfile
     ports: ["5174:80"]
     environment:
-      WARMBLY_API_URL: http://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
-      WARMBLY_DASHBOARD_URL: http://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WARMBLY_API_URL: https://api.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
+      WARMBLY_DASHBOARD_URL: https://app.compose-back-up-mobile-system-eu5pcz-d70d6f-72-60-81-29.sslip.io
       WARMBLY_ENV_LABEL: ${ENV_LABEL:-development}
       WARMBLY_TURNSTILE_KEY: "1x00000000000000000000AA"
     depends_on:
