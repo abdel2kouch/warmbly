@@ -34,5 +34,15 @@ defmodule RealtimeWeb.Endpoint do
     |> Plug.Conn.halt()
   end
 
+  # Domain and TLS checkers commonly probe the root with HEAD. Without an
+  # explicit response the endpoint reaches the end of the plug pipeline and
+  # Cowboy logs Plug.Conn.NotSentError even though the websocket service is
+  # healthy.
+  defp health_check(%Plug.Conn{method: "HEAD", request_path: "/"} = conn, _opts) do
+    conn
+    |> Plug.Conn.send_resp(200, "")
+    |> Plug.Conn.halt()
+  end
+
   defp health_check(conn, _opts), do: conn
 end
