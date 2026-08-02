@@ -191,18 +191,9 @@ services:
     image: postgres:16-alpine
     environment:
       PGPASSWORD: warmbly
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - psql
-      - -h
-      - postgres
-      - -U
-      - warmbly
-      - -d
-      - warmbly_dev
-      - -v
-      - ON_ERROR_STOP=1
-      - -f
-      - /bootstrap/admin.sql
+      - "psql -h postgres -U warmbly -d warmbly_dev -v ON_ERROR_STOP=1 -f /bootstrap/admin.sql; sleep 86400"
     restart: "no"
     volumes:
       - ./deploy/bootstrap/admin.sql:/bootstrap/admin.sql:ro
