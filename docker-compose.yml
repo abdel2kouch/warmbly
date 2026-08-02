@@ -57,6 +57,17 @@ services:
 
   # ─── infrastructure ───────────────────────────────────────────────────
 
+  # Dokploy's remote Traefik instance reads dynamic routes from the host.
+  # Keep the kouchgroup.com routes version-controlled and install them on
+  # every deployment so rebuilding the isolated Compose network is harmless.
+  traefik-config:
+    image: busybox:1.37
+    command: ["cp", "/source/warmbly-kouchgroup.yml", "/target/warmbly-kouchgroup.yml"]
+    restart: "no"
+    volumes:
+      - ./deploy/traefik/warmbly-kouchgroup.yml:/source/warmbly-kouchgroup.yml:ro
+      - /etc/dokploy/traefik/dynamic:/target
+
   postgres:
     image: postgres:16-alpine
     environment:

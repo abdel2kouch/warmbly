@@ -1,0 +1,89 @@
+http:
+  routers:
+    warmbly-app-http:
+      rule: Host(`app.kouchgroup.com`)
+      entryPoints: [web]
+      middlewares: [warmbly-redirect-https]
+      service: warmbly-app
+    warmbly-app-https:
+      rule: Host(`app.kouchgroup.com`)
+      entryPoints: [websecure]
+      service: warmbly-app
+      tls:
+        certResolver: letsencrypt
+
+    warmbly-api-http:
+      rule: Host(`api.kouchgroup.com`)
+      entryPoints: [web]
+      middlewares: [warmbly-redirect-https]
+      service: warmbly-api
+    warmbly-api-https:
+      rule: Host(`api.kouchgroup.com`)
+      entryPoints: [websecure]
+      service: warmbly-api
+      tls:
+        certResolver: letsencrypt
+
+    warmbly-admin-http:
+      rule: Host(`admin.kouchgroup.com`)
+      entryPoints: [web]
+      middlewares: [warmbly-redirect-https]
+      service: warmbly-admin
+    warmbly-admin-https:
+      rule: Host(`admin.kouchgroup.com`)
+      entryPoints: [websecure]
+      service: warmbly-admin
+      tls:
+        certResolver: letsencrypt
+
+    warmbly-tracking-http:
+      rule: Host(`tracking.kouchgroup.com`)
+      entryPoints: [web]
+      middlewares: [warmbly-redirect-https]
+      service: warmbly-tracking
+    warmbly-tracking-https:
+      rule: Host(`tracking.kouchgroup.com`)
+      entryPoints: [websecure]
+      service: warmbly-tracking
+      tls:
+        certResolver: letsencrypt
+
+    warmbly-realtime-http:
+      rule: Host(`realtime.kouchgroup.com`)
+      entryPoints: [web]
+      middlewares: [warmbly-redirect-https]
+      service: warmbly-realtime
+    warmbly-realtime-https:
+      rule: Host(`realtime.kouchgroup.com`)
+      entryPoints: [websecure]
+      service: warmbly-realtime
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    warmbly-redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+  services:
+    warmbly-app:
+      loadBalancer:
+        servers:
+          - url: http://compose-back-up-mobile-system-eu5pcz-web-1:80
+    warmbly-api:
+      loadBalancer:
+        servers:
+          - url: http://compose-back-up-mobile-system-eu5pcz-backend-1:8080
+    warmbly-admin:
+      loadBalancer:
+        servers:
+          - url: http://compose-back-up-mobile-system-eu5pcz-admin-1:80
+    warmbly-tracking:
+      loadBalancer:
+        servers:
+          - url: http://compose-back-up-mobile-system-eu5pcz-tracking-1:3000
+    warmbly-realtime:
+      loadBalancer:
+        servers:
+          - url: http://compose-back-up-mobile-system-eu5pcz-realtime-1:4000
