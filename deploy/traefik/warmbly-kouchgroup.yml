@@ -60,11 +60,28 @@ http:
       tls:
         certResolver: letsencrypt
 
+    warmbly-mailpit-http:
+      rule: Host(`mailpit.kouchgroup.com`)
+      entryPoints: [web]
+      middlewares: [warmbly-redirect-https]
+      service: warmbly-mailpit
+    warmbly-mailpit-https:
+      rule: Host(`mailpit.kouchgroup.com`)
+      entryPoints: [websecure]
+      middlewares: [warmbly-mailpit-auth]
+      service: warmbly-mailpit
+      tls:
+        certResolver: letsencrypt
+
   middlewares:
     warmbly-redirect-https:
       redirectScheme:
         scheme: https
         permanent: true
+    warmbly-mailpit-auth:
+      basicAuth:
+        users:
+          - 'warmbly:$2y$05$RLvR8HW5Pfjem0dhUj6xgesC4uFS.VIoGjAuVottCSekKZs0M8Mem'
 
   services:
     warmbly-app:
@@ -87,3 +104,7 @@ http:
       loadBalancer:
         servers:
           - url: http://compose-back-up-mobile-system-eu5pcz-realtime-1:4000
+    warmbly-mailpit:
+      loadBalancer:
+        servers:
+          - url: http://compose-back-up-mobile-system-eu5pcz-mailpit-1:8025

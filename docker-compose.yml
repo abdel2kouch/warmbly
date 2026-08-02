@@ -118,6 +118,11 @@ services:
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.docker.network=dokploy-network
 
   # Local IMAP host for the sandbox demo (`make sandbox`): the mailbox that
   # every seeded sender syncs from, so replies and warmup mail actually land in
