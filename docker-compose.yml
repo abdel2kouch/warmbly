@@ -62,8 +62,8 @@ services:
   # every deployment so rebuilding the isolated Compose network is harmless.
   traefik-config:
     image: busybox:1.37
-    command: ["sh", "/source/install.sh"]
-    restart: "no"
+    command: ["sh", "-c", "while true; do sh /source/install.sh; sleep 30; done"]
+    restart: unless-stopped
     volumes:
       - ./deploy/traefik/install.sh:/source/install.sh:ro
       - ./deploy/traefik/warmbly-kouchgroup.yml:/source/warmbly-kouchgroup.yml:ro
