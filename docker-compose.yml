@@ -158,6 +158,11 @@ services:
       BOX_OUTLOOK_CLIENT_SECRET: ${BOX_OUTLOOK_CLIENT_SECRET:-}
     volumes:
       - blobs:/data/blobs
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.docker.network=dokploy-network
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -226,6 +231,11 @@ services:
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-local-dev-internal-token}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.docker.network=dokploy-network
     depends_on:
       nats: { condition: service_healthy }
 
@@ -246,6 +256,11 @@ services:
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-local-development-secret-key-base-minimum-64-characters-for-phoenix}
       PUBSUB_ENABLED: "false"
       CHECK_ORIGIN: "false"
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.docker.network=dokploy-network
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -266,6 +281,11 @@ services:
       # Captcha is off server-side (CAPTCHA_PROVIDER=none); this Cloudflare test
       # key keeps the widget satisfied without a real key.
       WARMBLY_TURNSTILE_KEY: "1x00000000000000000000AA"
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.docker.network=dokploy-network
     depends_on:
       backend: { condition: service_healthy }
 
@@ -279,6 +299,11 @@ services:
       WARMBLY_DASHBOARD_URL: https://app.kouchgroup.com
       WARMBLY_ENV_LABEL: ${ENV_LABEL:-development}
       WARMBLY_TURNSTILE_KEY: "1x00000000000000000000AA"
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.docker.network=dokploy-network
     depends_on:
       backend: { condition: service_healthy }
 
@@ -302,3 +327,7 @@ volumes:
   redis_data:
   nats_data:
   blobs:
+
+networks:
+  dokploy-network:
+    external: true
