@@ -186,20 +186,6 @@ services:
       retries: 10
       start_period: 20s
 
-  # One-time recovery job. Removed after the administrator login is verified.
-  admin-bootstrap:
-    image: postgres:16-alpine
-    environment:
-      PGPASSWORD: warmbly
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - "psql -h postgres -U warmbly -d warmbly_dev -v ON_ERROR_STOP=1 -f /bootstrap/admin.sql; sleep 86400"
-    restart: "no"
-    volumes:
-      - ./deploy/bootstrap/admin.sql:/bootstrap/admin.sql:ro
-    depends_on:
-      backend: { condition: service_healthy }
-
   consumer:
     build:
       context: .
