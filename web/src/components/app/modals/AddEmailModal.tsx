@@ -174,39 +174,29 @@ export default function AddEmailModal() {
                     >
                         <Header view={view} onBack={() => setView("pick")} onClose={() => user.setAddEmail(false)} />
                         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative">
-                            <AnimatePresence mode="wait" initial={false}>
-                                <motion.div
-                                    key={view}
-                                    initial={{ opacity: 0, x: view === "pick" ? -12 : 12 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: view === "pick" ? 12 : -12 }}
-                                    transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
-                                >
-                                    {view === "pick" && <PickProvider onPick={setView} />}
-                                    {view === "gmail" && (
-                                        <OAuthPanel
-                                            provider="gmail"
-                                            busy={oauthBusy === "gmail"}
-                                            onConnect={() => startOAuth("gmail")}
-                                        />
-                                    )}
-                                    {view === "outlook" && (
-                                        <OAuthPanel
-                                            provider="outlook"
-                                            busy={oauthBusy === "outlook"}
-                                            onConnect={() => startOAuth("outlook")}
-                                        />
-                                    )}
-                                    {view === "smtp_imap" && (
-                                        <SmtpImapPanel
-                                            onDone={() => {
-                                                qc.invalidateQueries({ queryKey: ["emails", "list"] });
-                                                user.setAddEmail(false);
-                                            }}
-                                        />
-                                    )}
-                                </motion.div>
-                            </AnimatePresence>
+                            {view === "pick" && <PickProvider onPick={setView} />}
+                            {view === "gmail" && (
+                                <OAuthPanel
+                                    provider="gmail"
+                                    busy={oauthBusy === "gmail"}
+                                    onConnect={() => startOAuth("gmail")}
+                                />
+                            )}
+                            {view === "outlook" && (
+                                <OAuthPanel
+                                    provider="outlook"
+                                    busy={oauthBusy === "outlook"}
+                                    onConnect={() => startOAuth("outlook")}
+                                />
+                            )}
+                            {view === "smtp_imap" && (
+                                <SmtpImapPanel
+                                    onDone={() => {
+                                        qc.invalidateQueries({ queryKey: ["emails", "list"] });
+                                        user.setAddEmail(false);
+                                    }}
+                                />
+                            )}
                         </div>
                     </motion.div>
                 </motion.div>
