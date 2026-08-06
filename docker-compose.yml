@@ -154,6 +154,10 @@ services:
     environment:
       <<: *selfhost-env
       API_HOST: "0.0.0.0:8080"
+      # Public browser-facing API URL. OAuth providers must redirect here, not
+      # to API_HOST, which is the container's internal bind address.
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-}
+      APP_ORIGIN: ${APP_ORIGIN:-}
       GIN_MODE: release
       # To reach Warmbly from another machine, set PUBLIC_HOST=<ip-or-domain> in
       # .env — every URL below derives from it. Or set each URL explicitly.
