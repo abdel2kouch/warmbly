@@ -64,6 +64,11 @@ terminating TLS and point `PUBLIC_HOST` (or the individual `APP_URL` /
 `CORS_ALLOW_ORIGINS` / `WEBSOCKET_URL` / `API_PUBLIC_URL` / `TRACKING_DOMAIN`
 vars) at your domain.
 
+When the dashboard and API use separate subdomains, set `APP_ORIGIN` to the
+dashboard origin and `API_PUBLIC_URL` to the API origin. Mailbox OAuth returns
+to the API and securely hands the result back to the dashboard, so both values
+must be their public HTTPS origins.
+
 ## Scaling
 
 Outbound mail leaves through each mailbox's own provider (Gmail API, Microsoft

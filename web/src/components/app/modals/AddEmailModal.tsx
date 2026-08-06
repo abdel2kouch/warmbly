@@ -33,7 +33,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Google, Outlook, Logo } from "@/components/svg";
 import { TextInput } from "@/components/ui/field";
 import { useUserProfile } from "@/hooks/context/user";
-import { APP_URL } from "@/lib/information";
+import { API_URL, APP_URL } from "@/lib/information";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 import addEmail from "@/lib/api/client/app/emails/addEmail";
@@ -87,13 +87,17 @@ export default function AddEmailModal() {
         }
     }, [user.addEmail]);
 
-    // Listen for the OAuth popup's postMessage. We only honour messages
-    // whose origin matches APP_URL and whose state matches the one we
-    // issued — protects against replay and stray posts.
+    // The OAuth callback is served by the API, which can be on a different
+    // origin from the dashboard in production. Only accept either configured
+    // origin, plus the current dashboard origin, and still require its state.
     React.useEffect(() => {
         function onMessage(event: MessageEvent) {
-            const expectedOrigin = APP_URL || window.location.origin;
-            if (event.origin && expectedOrigin && event.origin !== expectedOrigin && event.origin !== window.location.origin) {
+            const allowedOrigins = new Set(
+                [APP_URL, API_URL, window.location.origin]
+                    .filter(Boolean)
+                    .map((value) => new URL(value).origin),
+            );
+            if (!allowedOrigins.has(event.origin)) {
                 return;
             }
             const data = event.data as OAuthCallbackMessage | undefined;
