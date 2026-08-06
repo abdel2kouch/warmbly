@@ -939,7 +939,11 @@ func main() {
 
 		eventsPublisher := events.NewPublisher(bus, s3, codecImpl, cipherService)
 
-		oauth2Cfg := config.LoadOauth2(apiCfg.Hostname)
+		oauthBaseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("API_PUBLIC_URL")), "/")
+		if oauthBaseURL == "" {
+			oauthBaseURL = "http://" + apiCfg.Hostname
+		}
+		oauth2Cfg := config.LoadOauth2(oauthBaseURL)
 		emailService = email.NewServiceWithWorker(
 			emailRepostory,
 			cipherService,
