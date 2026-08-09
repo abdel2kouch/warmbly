@@ -247,7 +247,11 @@ func (h *Handler) StopCampaign(c *gin.Context) {
 // GetCampaignLogs returns campaign activity logs
 // GET /campaigns/:id/logs
 func (h *Handler) GetCampaignLogs(c *gin.Context) {
-	userID := middleware.GetUserID(c)
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.JSON(c, errx.New(errx.BadRequest, "no organization selected"))
+		return
+	}
 	id := c.Param("id")
 
 	cursorStr := c.Query("cursor")
@@ -263,7 +267,7 @@ func (h *Handler) GetCampaignLogs(c *gin.Context) {
 		}
 	}
 
-	result, xerr := h.CampaignService.GetLogs(c.Request.Context(), userID, id, limit, cursor)
+	result, xerr := h.CampaignService.GetLogs(c.Request.Context(), orgID.String(), id, limit, cursor)
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return

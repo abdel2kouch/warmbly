@@ -38,8 +38,9 @@ func (h *Handler) SendTestEmail(c *gin.Context) {
 		return
 	}
 
-	// Load campaign
-	campaign, xerr := h.CampaignService.Get(c.Request.Context(), userID, campaignID.String())
+	// Campaigns are workspace-scoped. Use the selected workspace to load it;
+	// userID is still passed to SendTestEmail below for sender authorization.
+	campaign, xerr := h.CampaignService.Get(c.Request.Context(), orgID.String(), campaignID.String())
 	if xerr != nil {
 		errx.JSON(c, xerr)
 		return
