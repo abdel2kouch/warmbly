@@ -24,9 +24,13 @@ func (w *WMail) onGoogleMessageAdd(ctx context.Context, msg *models.EmailMessage
 		return nil
 	}
 
-	// Check and record sync event for rate limiting
-	if rateLimitErr := w.CheckAndRecordSync(ctx, 1); rateLimitErr != nil {
-		return rateLimitErr
+	// A history-cursor recovery imports existing mailbox content. It is not a
+	// burst of newly delivered mail, so counting it would terminate the account
+	// after 100 messages and prevent the recovery from ever completing.
+	if recovering, _ := ctx.Value(bootstrapSyncContextKey{}).(bool); !recovering {
+		if rateLimitErr := w.CheckAndRecordSync(ctx, 1); rateLimitErr != nil {
+			return rateLimitErr
+		}
 	}
 
 	msg.ID = uuid.New()

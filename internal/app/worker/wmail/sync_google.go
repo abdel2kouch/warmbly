@@ -8,6 +8,12 @@ import (
 	"github.com/warmbly/warmbly/internal/models"
 )
 
+// bootstrapSyncContextKey marks a one-time recovery sync after Gmail has
+// expired its history cursor. The recovery reads messages that already exist
+// in the mailbox; it must not be interpreted as a sudden burst of newly
+// received mail and trip the anti-abuse limiter.
+type bootstrapSyncContextKey struct{}
+
 func (w *WMail) SyncGoogle(ctx context.Context) *errx.MailError {
 	newHistoryID, err := w.GoogleData.Client.FetchHistory(ctx, w.GoogleData.LastHistoryID)
 	// Gmail history IDs expire. A 404 does not mean the mailbox is gone: reset
@@ -15,7 +21,8 @@ func (w *WMail) SyncGoogle(ctx context.Context) *errx.MailError {
 	// syncs. Without this recovery every subsequent poll fails forever and the
 	// unified inbox never sees new replies.
 	if errMail, ok := err.(*errx.MailError); ok && errMail.Code == errx.MailErrorCodeGoogleUnknown(404) {
-		newHistoryID, err = w.GoogleData.Client.ResyncInbox(ctx)
+		bootstrapCtx := context.WithValue(ctx, bootstrapSyncContextKey{}, true)
+		newHistoryID, err = w.GoogleData.Client.ResyncInbox(bootstrapCtx)
 	}
 	if newHistoryID != 0 {
 		if err := w.NewHistoryID(newHistoryID); err != nil {
@@ -41,6 +48,8 @@ func (w *WMail) SyncGoogle(ctx context.Context) *errx.MailError {
 
 func (w *WMail) NewHistoryID(historyID uint64) error {
 	return w.onEvent(models.JobEventTypeHistoryIDUpdate, &models.JobEventHistoryIDUpdate{
+		UserID:    w.UserID,
+		EmailID:   w.ID,
 		HistoryID: historyID,
 	})
 }
