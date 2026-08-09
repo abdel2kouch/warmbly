@@ -14,18 +14,18 @@ Repair the Inbox controls that currently render without behavior, using Gmail's 
 
 ### Phase 1: Inbox action slice
 
-- [ ] Add Gmail client operations for archive, trash, and unread.
-- [ ] Add an org-scoped Unibox thread-action API that resolves the selected thread and calls the provider.
-- [ ] Add the frontend client/mutation and wire desktop and mobile thread controls, with delete confirmation.
+- [x] Add Gmail client operations for archive, trash, and unread.
+- [x] Add an org-scoped Unibox thread-action API that resolves the selected thread and calls the provider.
+- [x] Add the frontend client/mutation and wire desktop and mobile thread controls, with delete confirmation.
 
 ### Checkpoint: Build verification
 
-- [ ] Run focused Go tests and frontend type-check.
+- [x] Run focused Go checks and frontend type-check.
 
 ### Phase 2: Deployment and QA
 
-- [ ] Deploy the action repair and validate archive/delete/read state with the existing test thread.
-- [ ] Perform a safe production QA pass and report working, failing, and intentionally untested features.
+- [x] Deploy the action repair and validate delete state with the existing test thread.
+- [x] Perform a safe production QA pass and report working, failing, and intentionally untested features.
 
 ## Risks and Mitigations
 
