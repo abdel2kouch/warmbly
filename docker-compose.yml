@@ -217,6 +217,11 @@ services:
       dockerfile: deploy/docker/worker.Dockerfile
     environment:
       <<: *selfhost-env
+      # A worker topic is derived from this UUID. It must survive Compose
+      # recreations: otherwise each deployment generates a new topic while
+      # existing mailboxes remain assigned to the previous (now unserved) one.
+      # Override WORKER_ID in Dokploy only when deliberately adding a worker.
+      WORKER_ID: ${WORKER_ID:-b51eb4e5-cdf8-5ffc-90e4-c1c1f85c4cbf}
       MAIL_TLS_INSECURE: "true"
       ENCRYPTED_KEYS_PROVIDER: http
       ENCRYPTED_KEYS_BACKEND_URL: http://backend:8080
