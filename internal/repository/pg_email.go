@@ -208,6 +208,24 @@ func (r *emailRepository) NewOauthAccount(ctx context.Context, userID string, da
 		sentry.CaptureException(errors.New("invalid inbox provider"))
 		return nil, errx.InternalError()
 	}
+	if r.Encrypt == nil {
+		sentry.CaptureException(errNoCredentialEncrypter)
+		return nil, errx.InternalError()
+	}
+
+	// OAuth tokens are secrets and must be sealed before they reach Postgres.
+	// Older rows were written before this repository enforced encryption; the
+	// read path below upgrades those safely on first load.
+	accessToken, err := r.Encrypt.Encrypt(data.AccessToken)
+	if err != nil {
+		sentry.CaptureException(err)
+		return nil, errx.InternalError()
+	}
+	refreshToken, err := r.Encrypt.Encrypt(data.RefreshToken)
+	if err != nil {
+		sentry.CaptureException(err)
+		return nil, errx.InternalError()
+	}
 
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
@@ -261,8 +279,8 @@ func (r *emailRepository) NewOauthAccount(ctx context.Context, userID string, da
 
 	params = []any{
 		id,
-		data.AccessToken,
-		data.RefreshToken,
+		accessToken,
+		refreshToken,
 		data.ExpiresAt,
 	}
 
@@ -1364,17 +1382,47 @@ func (r *emailRepository) GetOAuthCredentials(ctx context.Context, emailAccountI
 		return nil, errx.InternalError()
 	}
 
-	// Decrypt tokens
-	var xerr error
-	decryptedAccessToken, xerr := r.Encrypt.Decrypt(accessToken)
+	// Older self-host versions stored OAuth tokens as plaintext. Detect only
+	// the unmistakable legacy shape (not valid hex) and upgrade both values in
+	// place. A valid encrypted value that fails to decrypt still fails closed:
+	// that indicates key loss or ciphertext corruption, not a legacy row.
+	decryptOrLegacy := func(value string) (plain string, legacy bool, derr error) {
+		if _, err := encrypt.ParseHex(value); err != nil {
+			return value, true, nil
+		}
+		plain, err := r.Encrypt.Decrypt(value)
+		return plain, false, err
+	}
+
+	decryptedAccessToken, accessLegacy, xerr := decryptOrLegacy(accessToken)
 	if xerr != nil {
 		sentry.CaptureException(xerr)
 		return nil, errx.InternalError()
 	}
-	decryptedRefreshToken, xerr := r.Encrypt.Decrypt(refreshToken)
+	decryptedRefreshToken, refreshLegacy, xerr := decryptOrLegacy(refreshToken)
 	if xerr != nil {
 		sentry.CaptureException(xerr)
 		return nil, errx.InternalError()
+	}
+	if accessLegacy || refreshLegacy {
+		sealedAccess, serr := r.Encrypt.Encrypt(decryptedAccessToken)
+		if serr != nil {
+			sentry.CaptureException(serr)
+			return nil, errx.InternalError()
+		}
+		sealedRefresh, serr := r.Encrypt.Encrypt(decryptedRefreshToken)
+		if serr != nil {
+			sentry.CaptureException(serr)
+			return nil, errx.InternalError()
+		}
+		if _, err := r.DB.Exec(ctx, `
+			UPDATE email_accounts_oauth
+			SET access_token = $1, refresh_token = $2
+			WHERE email_account_id = $3
+		`, sealedAccess, sealedRefresh, emailAccountID); err != nil {
+			db.CaptureError(err, "upgrade legacy OAuth credential encryption", []any{emailAccountID}, "exec")
+			return nil, errx.InternalError()
+		}
 	}
 
 	return &OAuthCredentials{
