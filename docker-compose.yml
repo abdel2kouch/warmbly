@@ -39,7 +39,13 @@ x-selfhost-env: &selfhost-env
   CODEC_PROVIDER: json
   KMS_PROVIDER: local
   KMS_LOCAL_MASTER_KEY: ${KMS_LOCAL_MASTER_KEY:-Xr0JA7gqF2POy29a7MRByyqddivTNt8WOyKsOXklazk=}
-  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+  # Keep this distinct from Dokploy's legacy CREDENTIALS_ENCRYPTION_KEY
+  # override. That override may be malformed (not 64 hex characters), which
+  # prevents the backend from loading every connected mailbox. Existing local
+  # installs used this documented fallback unless a valid key was explicitly
+  # supplied. Set WARMBLY_CREDENTIALS_ENCRYPTION_KEY to a 64-character hex key
+  # before a fresh production install.
+  CREDENTIALS_ENCRYPTION_KEY: ${WARMBLY_CREDENTIALS_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
   BLOB_PROVIDER: filesystem
   BLOB_FS_ROOT: /data/blobs
   # Dokploy public route (Traefik terminates the browser-facing connection).
