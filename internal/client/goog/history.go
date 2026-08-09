@@ -61,3 +61,38 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 
 	return newLastHistoryID, nil
 }
+
+// ResyncInbox rebuilds the local view from Gmail's current inbox and returns a
+// fresh history cursor. Gmail expires old history cursors and responds with a
+// 404; continuing to retry that cursor leaves the unified inbox permanently
+// stale. A bounded full inbox pass lets us recover without re-authorizing.
+func (c *Client) ResyncInbox(ctx context.Context) (uint64, error) {
+	call := c.srv.Users.Messages.List("me").LabelIds("INBOX").MaxResults(500)
+	for {
+		resp, err := call.Context(ctx).Do()
+		if err != nil {
+			return 0, HandleError(err)
+		}
+		for _, m := range resp.Messages {
+			full, ferr := c.srv.Users.Messages.Get("me", m.Id).Format("full").Context(ctx).Do()
+			if ferr != nil {
+				if gerr, ok := ferr.(*googleapi.Error); ok && gerr.Code == 404 {
+					continue
+				}
+				return 0, HandleError(ferr)
+			}
+			if err := c.OnMessageAdd(ctx, GmailMessageToEmailData(full)); err != nil {
+				return 0, err
+			}
+		}
+		if resp.NextPageToken == "" {
+			break
+		}
+		call.PageToken(resp.NextPageToken)
+	}
+	profile, err := c.srv.Users.GetProfile("me").Context(ctx).Do()
+	if err != nil {
+		return 0, HandleError(err)
+	}
+	return profile.HistoryId, nil
+}
