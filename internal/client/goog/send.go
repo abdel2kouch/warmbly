@@ -33,96 +33,11 @@ func (c *Client) SendMessage(
 	attachments []Attachment,
 	customHeaders ...map[string]string,
 ) (*gmail.Message, error) {
-	// Attachments require a multipart/mixed MIME tree, which the structured
-	// gmail.MessagePart API does not express well (no per-part raw bytes with
-	// Content-Disposition). Build a raw RFC 5322 message and submit it as
-	// base64url Raw. The no-attachment path keeps the existing structured form
-	// so threading/back-compat behavior is unchanged.
-	if len(attachments) > 0 {
-		return c.sendRawWithAttachments(to, cc, bcc, messageID, subject, bodyPlain, bodyHTML, parent, attachments, customHeaders...)
-	}
-
-	// Compose headers
-	headers := []*gmail.MessagePartHeader{
-		{Name: "From", Value: c.GetAddress()},
-		{Name: "To", Value: strings.Join(to, ", ")},
-		{Name: "Subject", Value: subject},
-		{Name: "Message-ID", Value: messageID},
-	}
-
-	if len(cc) > 0 {
-		headers = append(headers, &gmail.MessagePartHeader{
-			Name:  "Cc",
-			Value: strings.Join(cc, ", "),
-		})
-	}
-
-	if len(bcc) > 0 {
-		headers = append(headers, &gmail.MessagePartHeader{
-			Name:  "Bcc",
-			Value: strings.Join(bcc, ", "),
-		})
-	}
-
-	if parent != nil && parent.MessageID != "" {
-		// Trim any existing <...> before re-wrapping so we don't emit <<id>>,
-		// which won't match the original Message-ID header and breaks threading.
-		mid := "<" + strings.Trim(parent.MessageID, "<>") + ">"
-		headers = append(headers,
-			&gmail.MessagePartHeader{Name: "In-Reply-To", Value: mid},
-			&gmail.MessagePartHeader{Name: "References", Value: mid},
-		)
-	}
-
-	// Add custom headers (e.g., X-Warmbly-Token for warmup)
-	if len(customHeaders) > 0 {
-		for k, v := range customHeaders[0] {
-			headers = append(headers, &gmail.MessagePartHeader{Name: k, Value: v})
-		}
-	}
-
-	// Compose parts
-	var parts []*gmail.MessagePart
-
-	// Plain text part
-	parts = append(parts, &gmail.MessagePart{
-		MimeType: "text/plain",
-		Body: &gmail.MessagePartBody{
-			Data: base64.URLEncoding.EncodeToString([]byte(bodyPlain)),
-		},
-	})
-
-	// HTML part (optional)
-	if bodyHTML != "" {
-		parts = append(parts, &gmail.MessagePart{
-			MimeType: "text/html",
-			Body: &gmail.MessagePartBody{
-				Data: base64.URLEncoding.EncodeToString([]byte(bodyHTML)),
-			},
-		})
-	}
-
-	// Full message
-	msg := &gmail.Message{
-		Payload: &gmail.MessagePart{
-			MimeType: "multipart/alternative",
-			Headers:  headers,
-			Parts:    parts,
-		},
-	}
-
-	// Threading
-	if parent != nil && parent.ThreadID != "" {
-		msg.ThreadId = parent.ThreadID
-	}
-
-	// Send via Gmail API
-	sent, err := c.srv.Users.Messages.Send("me", msg).Do()
-	if err != nil {
-		return nil, fmt.Errorf("send message failed: %w", err)
-	}
-
-	return sent, nil
+	// Gmail's API only accepts an RFC 822 message through Message.Raw. The
+	// structured Payload form is returned by Gmail when reading mail, but is
+	// not a valid request body for Users.Messages.Send. Use the same raw MIME
+	// transport for all messages, with or without attachments.
+	return c.sendRawWithAttachments(to, cc, bcc, messageID, subject, bodyPlain, bodyHTML, parent, attachments, customHeaders...)
 }
 
 // sendRawWithAttachments builds a multipart/mixed RFC 5322 message
