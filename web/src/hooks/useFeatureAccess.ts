@@ -14,6 +14,7 @@
 // page.
 
 import useSubscription from "@/lib/api/hooks/app/subscription/useSubscription";
+import useFeatureStatus from "@/lib/api/hooks/app/subscription/useFeatureStatus";
 import { useAppStore } from "@/stores";
 import { PERMISSION_BITS, hasPermission } from "@/lib/permissions";
 import {
@@ -52,6 +53,7 @@ export interface FeatureAccess {
 
 export default function useFeatureAccess(): FeatureAccess {
     const sub = useSubscription();
+    const featureStatus = useFeatureStatus();
     const currentOrg = useAppStore((s) => s.currentOrganization);
 
     const planId = ((sub.data?.plan?.name ?? currentOrg?.plan ?? "free").toLowerCase()) as PlanID;
@@ -66,8 +68,14 @@ export default function useFeatureAccess(): FeatureAccess {
         sub.isPending && !!currentOrg?.plan && currentOrg.plan.toLowerCase() !== "free";
     const isPaid = subSaysPaid || orgImpliesPaid;
 
+    // The feature endpoint is the backend's authoritative decision.  This
+    // matters for self-hosted installations: BILLING_PROVIDER=none unlocks
+    // the feature gate even though there is intentionally no Stripe
+    // subscription for useSubscription() to load.
+    const canUseInbox = featureStatus.data?.can_use_unibox;
+
     return {
-        loading: sub.isPending,
+        loading: sub.isPending || featureStatus.isPending,
         status,
         plan,
         paid: isPaid,
@@ -75,7 +83,7 @@ export default function useFeatureAccess(): FeatureAccess {
         // so gate it on having an active/trialing subscription (isPaid) rather
         // than the plan-name → catalog map, which doesn't recognise server plan
         // names like "Pro" / "Free Trial" and would wrongly lock paid orgs.
-        hasInbox: isPaid,
+        hasInbox: canUseInbox ?? isPaid,
         hasAdvanced: isPaid && isAtLeast(plan, "business"),
         hasDedicatedIps: isPaid && isAtLeast(plan, "business"),
         hasRealtime: true,

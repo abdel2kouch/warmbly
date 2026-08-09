@@ -73,5 +73,19 @@ func (s *tasksService) SendTestEmail(ctx context.Context, userID string, account
 		return errx.New(errx.Internal, fmt.Sprintf("failed to send test email: %v", err))
 	}
 
+	// A test send made to a contact already in the campaign is still an
+	// outbound message from that campaign.  Record it after provider success so
+	// the campaign and workspace dashboards do not silently under-report these
+	// sends.  Previewing to an arbitrary external address remains side-effect
+	// free because no matching workspace contact exists.
+	if campaign.OrganizationID != nil {
+		contact, xerr := s.contactRepo.GetByEmailAndOrganization(ctx, *campaign.OrganizationID, recipient)
+		if xerr == nil && contact != nil {
+			if err := s.campaignProgressRepo.RecordEmailSent(ctx, campaign.ID, contact.ID, sequence.ID); err != nil {
+				return errx.New(errx.Internal, fmt.Sprintf("sent test email but failed to record analytics: %v", err))
+			}
+		}
+	}
+
 	return nil
 }
