@@ -152,6 +152,17 @@ services:
 
   # ─── application ──────────────────────────────────────────────────────
 
+  # Docker creates named volumes as root-owned. The Go services intentionally
+  # run as the unprivileged `warmbly` user, so initialise the local blob
+  # volume before they start. Without this, campaign/test email bodies cannot
+  # be stored and every send fails with "mkdir /data/blobs: permission denied".
+  blobs-init:
+    image: alpine:3.23
+    command: ["sh", "-c", "mkdir -p /data/blobs && chown -R 1000:1000 /data/blobs"]
+    volumes:
+      - blobs:/data/blobs
+    restart: "no"
+
   backend:
     build:
       context: .
@@ -191,6 +202,7 @@ services:
     labels:
       - traefik.docker.network=dokploy-network
     depends_on:
+      blobs-init: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       nats: { condition: service_healthy }
