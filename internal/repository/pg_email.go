@@ -1229,9 +1229,13 @@ func (r *emailRepository) GetByCampaignSenders(ctx context.Context, userID strin
 		 cs.weight, cs.rotation_position, cs.last_sent_at
 		FROM email_accounts ea
 		JOIN campaign_senders cs ON cs.email_account_id = ea.id
+		JOIN campaigns c ON c.id = cs.campaign_id
 		WHERE cs.campaign_id = $2
 		  AND cs.enabled
-		  AND ea.user_id = $1
+		  -- Campaign sender pools are workspace-scoped.  A mailbox may have been
+		  -- connected by a different member than the campaign's legacy user_id,
+		  -- so accept either the original owner or the shared organization.
+		  AND (ea.user_id = $1 OR ea.organization_id IS NOT DISTINCT FROM c.organization_id)
 		  AND ea.status = 'active'
 		ORDER BY ea.id
 	`
