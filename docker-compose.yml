@@ -222,6 +222,10 @@ services:
       # existing mailboxes remain assigned to the previous (now unserved) one.
       # Override WORKER_ID in Dokploy only when deliberately adding a worker.
       WORKER_ID: ${WORKER_ID:-b51eb4e5-cdf8-5ffc-90e4-c1c1f85c4cbf}
+      # A self-hosted workspace without Stripe subscription records uses the
+      # free worker pool. Override this only when deliberately operating a
+      # separate paid/premium worker pool.
+      WORKER_TIER: ${WORKER_TIER:-shared_free}
       MAIL_TLS_INSECURE: "true"
       ENCRYPTED_KEYS_PROVIDER: http
       ENCRYPTED_KEYS_BACKEND_URL: http://backend:8080
