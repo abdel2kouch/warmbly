@@ -129,7 +129,9 @@ func NewWMail(
 				// refreshes an access token. Leaving it nil made the first sync
 				// after an access-token expiry panic before the inbox could be
 				// updated (and before the new token could be persisted).
-				OnTokenRefresh: mail.onTokenUpdate,
+				OnTokenRefresh: func(_ context.Context, token *oauth2.Token) error {
+					return mail.onTokenUpdate(token)
+				},
 			},
 			LastHistoryID: data.Google.LastHistoryID,
 		}
