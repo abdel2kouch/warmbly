@@ -1508,16 +1508,32 @@ func (s *service) RunPreflight(ctx context.Context, organizationID, campaignID u
 	}
 
 	if settings.Preflight.CheckTrackingDomain && (campaign.OpenTracking || campaign.LinkTracking) {
-		accounts, err := s.emailRepo.GetByTags(ctx, campaign.UserID, campaign.EmailTags)
-		if err != nil || len(accounts) == 0 {
+		// Explicit sender pools are the source of truth for rotated campaigns.
+		// Looking only at legacy tags made a fully configured explicit campaign
+		// fail preflight even though the scheduler could send from its pool.
+		accounts := make([]models.Email, 0)
+		if campaign.SenderStrategy == "explicit" {
+			senders, err := s.emailRepo.GetByCampaignSenders(ctx, campaign.UserID, campaignID)
+			if err == nil {
+				for _, sender := range senders {
+					accounts = append(accounts, sender.Account)
+				}
+			}
+		} else {
+			tagged, err := s.emailRepo.GetByTags(ctx, campaign.UserID, campaign.EmailTags)
+			if err == nil {
+				accounts = tagged
+			}
+		}
+		if len(accounts) == 0 {
 			checks = append(checks, models.PreflightCheckResult{
 				Key:         "tracking_domain",
 				Passed:      false,
 				Severity:    "error",
 				Message:     "No sender accounts available for tracking validation.",
-				Remediation: "Attach sender accounts to campaign tags.",
+				Remediation: "Attach active sender accounts to the campaign.",
 			})
-			recommendations = append(recommendations, "Attach at least one sender account with tracking domain.")
+			recommendations = append(recommendations, "Attach at least one active sender account with tracking domain.")
 		} else {
 			missing := 0
 			for _, account := range accounts {
