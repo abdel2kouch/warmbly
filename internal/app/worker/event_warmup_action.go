@@ -65,6 +65,18 @@ func (w *WorkerService) runGoogleWarmupActions(ctx context.Context, mail *wmail.
 			if err := mail.GoogleData.Client.MarkAsRead(ctx, action.GmailID); err != nil {
 				log.Error().Err(err).Str("gmail_id", action.GmailID).Msg("Failed to mark as read")
 			}
+		case "mark_unread":
+			if err := mail.GoogleData.Client.MarkAsUnread(ctx, action.GmailID); err != nil {
+				log.Error().Err(err).Str("gmail_id", action.GmailID).Msg("Failed to mark as unread")
+			}
+		case "archive":
+			if err := mail.GoogleData.Client.Archive(ctx, action.GmailID); err != nil {
+				log.Error().Err(err).Str("gmail_id", action.GmailID).Msg("Failed to archive message")
+			}
+		case "trash":
+			if err := mail.GoogleData.Client.Trash(ctx, action.GmailID); err != nil {
+				log.Error().Err(err).Str("gmail_id", action.GmailID).Msg("Failed to move message to trash")
+			}
 		case "remove_from_spam":
 			if err := mail.GoogleData.Client.RemoveFromSpam(ctx, action.GmailID); err != nil {
 				log.Error().Err(err).Str("gmail_id", action.GmailID).Msg("Failed to remove from spam")

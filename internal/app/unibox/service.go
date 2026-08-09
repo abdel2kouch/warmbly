@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/errx"
+	"github.com/warmbly/warmbly/internal/events"
 	"github.com/warmbly/warmbly/internal/infrastructure/cache"
 	"github.com/warmbly/warmbly/internal/infrastructure/storage"
 	"github.com/warmbly/warmbly/internal/models"
@@ -41,6 +42,7 @@ type UniboxService interface {
 	) (int64, *errx.Error)
 	MarkSeen(ctx context.Context, userID, emailID uuid.UUID, seen bool) *errx.Error
 	MarkSeenBulk(ctx context.Context, orgID uuid.UUID, data *models.MarkSeen) (*models.MarkSeen, *errx.Error)
+	ThreadAction(ctx context.Context, orgID uuid.UUID, threadID, action string) *errx.Error
 
 	// Snooze hides a thread until `until`. Unsnooze drops the row.
 	Snooze(ctx context.Context, userID uuid.UUID, threadID string, until time.Time) (*models.UniboxSnooze, *errx.Error)
@@ -71,6 +73,8 @@ type uniboxService struct {
 	uniboxRepository repository.UniboxRepository
 	taskRepo         repository.TaskRepository
 	tasksClient      tasksched.Scheduler
+	emailRepository  repository.EmailRepository
+	publisher        events.Publisher
 	cache            *cache.Cache
 	blob             storage.Store
 }
@@ -81,11 +85,15 @@ func NewService(
 	uniboxRepository repository.UniboxRepository,
 	taskRepo repository.TaskRepository,
 	tasksClient tasksched.Scheduler,
+	emailRepository repository.EmailRepository,
+	publisher events.Publisher,
 ) UniboxService {
 	return &uniboxService{
 		uniboxRepository: uniboxRepository,
 		taskRepo:         taskRepo,
 		tasksClient:      tasksClient,
+		emailRepository:  emailRepository,
+		publisher:        publisher,
 		cache:            cache,
 		blob:             blob,
 	}

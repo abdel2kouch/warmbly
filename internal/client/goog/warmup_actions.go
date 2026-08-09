@@ -45,6 +45,49 @@ func (c *Client) MarkAsRead(ctx context.Context, messageID string) error {
 	return nil
 }
 
+// MarkAsUnread marks a message unread by adding Gmail's UNREAD system label.
+func (c *Client) MarkAsUnread(ctx context.Context, messageID string) error {
+	if c.srv == nil {
+		return fmt.Errorf("gmail service not initialized")
+	}
+
+	_, err := c.srv.Users.Messages.Modify("me", messageID, &gmail.ModifyMessageRequest{
+		AddLabelIds: []string{Unread},
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to mark as unread: %w", err)
+	}
+	return nil
+}
+
+// Archive removes a message from Gmail's Inbox without deleting it.
+func (c *Client) Archive(ctx context.Context, messageID string) error {
+	if c.srv == nil {
+		return fmt.Errorf("gmail service not initialized")
+	}
+
+	_, err := c.srv.Users.Messages.Modify("me", messageID, &gmail.ModifyMessageRequest{
+		RemoveLabelIds: []string{Inbox},
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to archive message: %w", err)
+	}
+	return nil
+}
+
+// Trash moves a message to Gmail's Trash. Gmail retains it there according to
+// the account's normal retention policy; this is intentionally not permanent deletion.
+func (c *Client) Trash(ctx context.Context, messageID string) error {
+	if c.srv == nil {
+		return fmt.Errorf("gmail service not initialized")
+	}
+
+	if err := c.srv.Users.Messages.Trash("me", messageID).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("failed to move message to trash: %w", err)
+	}
+	return nil
+}
+
 // RemoveFromSpam removes a message from the SPAM label
 func (c *Client) RemoveFromSpam(ctx context.Context, messageID string) error {
 	if c.srv == nil {

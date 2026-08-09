@@ -64,6 +64,17 @@ import {
 import type UniboxEmail from "@/lib/api/models/app/unibox/UniboxEmail";
 import type UniboxScheduledItem from "@/lib/api/models/app/unibox/UniboxScheduled";
 import type { UniboxThreadMessage } from "@/lib/api/models/app/unibox/UniboxThread";
+import threadAction, { type UniboxThreadAction } from "@/lib/api/client/app/unibox/threadAction";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ThreadViewProps {
   threadId: string;
@@ -164,6 +175,29 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
     defaultCustomSnoozeValue,
   );
   const [customMode, setCustomMode] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+
+  const action = useMutation({
+    mutationFn: (kind: UniboxThreadAction) => threadAction(threadId, kind),
+    onSuccess: (_data, kind) => {
+      const message = {
+        archive: "Thread archived",
+        trash: "Thread moved to Trash",
+        mark_read: "Thread marked as read",
+        mark_unread: "Thread marked as unread",
+      }[kind];
+      toast.success(message);
+      setDeleteOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["unibox", "search"] });
+      queryClient.invalidateQueries({ queryKey: ["unibox", "overview"] });
+      queryClient.invalidateQueries({ queryKey: ["unibox", "count"] });
+      queryClient.invalidateQueries({ queryKey: ["unibox", "thread", threadId] });
+      if (kind === "archive" || kind === "trash") {
+        window.history.back();
+      }
+    },
+    onError: () => toast.error("Couldn't update this thread"),
+  });
 
   // Conversation labels (read for the header chips; the menu writes).
   const threadLabels = useThreadLabels(threadId);
@@ -501,15 +535,18 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
             <IconAction
               label="Mark as unread"
               icon={<MailCheckIcon className="w-3.5 h-3.5" />}
+              onClick={() => action.mutate("mark_unread")}
             />
             <IconAction
               label="Archive thread"
               icon={<ArchiveIcon className="w-3.5 h-3.5" />}
+              onClick={() => action.mutate("archive")}
             />
             <IconAction
               label="Delete thread"
               danger
               icon={<TrashIcon className="w-3.5 h-3.5" />}
+              onClick={() => setDeleteOpen(true)}
             />
           </div>
           <PopoverMenu align="end" side="bottom">
@@ -525,15 +562,17 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
             <PopoverMenuContent>
               <PopoverMenuItem
                 icon={<MailCheckIcon className="w-3.5 h-3.5" />}
+                onSelect={() => action.mutate("mark_unread")}
               >
                 Mark as unread
               </PopoverMenuItem>
-              <PopoverMenuItem icon={<ArchiveIcon className="w-3.5 h-3.5" />}>
+              <PopoverMenuItem icon={<ArchiveIcon className="w-3.5 h-3.5" />} onSelect={() => action.mutate("archive")}>
                 Archive thread
               </PopoverMenuItem>
               <PopoverMenuItem
                 danger
                 icon={<TrashIcon className="w-3.5 h-3.5" />}
+                onSelect={() => setDeleteOpen(true)}
               >
                 Delete thread
               </PopoverMenuItem>
@@ -541,6 +580,27 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
           </PopoverMenu>
         </div>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Move this conversation to Trash?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This moves the conversation to Gmail Trash. It is not permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={action.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700"
+              disabled={action.isPending}
+              onClick={() => action.mutate("trash")}
+            >
+              Move to Trash
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <SectionBar
         label={`${messages.length} ${messages.length === 1 ? "message" : "messages"}`}

@@ -377,6 +377,35 @@ func (h *Handler) UniboxMarkSeen(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+type UniboxThreadActionRequest struct {
+	ThreadID string `json:"thread_id" binding:"required"`
+	Action   string `json:"action" binding:"required"`
+}
+
+// UniboxThreadAction performs a provider-backed archive, trash, or read-state
+// change for all messages in a selected conversation.
+func (h *Handler) UniboxThreadAction(c *gin.Context) {
+	if !h.gateUnibox(c) {
+		return
+	}
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
+		return
+	}
+	var req UniboxThreadActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errx.Handle(c, errx.ErrInvalid)
+		return
+	}
+	if xerr := h.UniboxService.ThreadAction(c.Request.Context(), *orgID, req.ThreadID, req.Action); xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
+	h.auditOrg(c, models.AuditActionUpdate, models.AuditEntityUnibox, nil, nil, map[string]string{"action": req.Action, "thread_id": req.ThreadID})
+	c.Status(http.StatusNoContent)
+}
+
 // GetUnseenCount gets the count of unseen emails
 // GET /unibox/count
 func (h *Handler) GetUnseenCount(c *gin.Context) {

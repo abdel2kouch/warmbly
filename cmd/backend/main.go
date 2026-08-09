@@ -1017,7 +1017,7 @@ func main() {
 		// needs the Cloud Tasks client for best-effort DeleteTask, and
 		// tasksClient isn't initialised until the Cloud Tasks config
 		// block runs.
-		uniboxService = unibox.NewService(cache, s3, uniboxRepository, taskRepository, tasksClient)
+		uniboxService = unibox.NewService(cache, s3, uniboxRepository, taskRepository, tasksClient, emailRepostory, eventsPublisher)
 
 		// Org AI skills (playbooks): CRUD for settings + prompt injection + the
 		// load_skill tool source.

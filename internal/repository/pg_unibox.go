@@ -39,6 +39,8 @@ type UniboxRepository interface {
 	MarkSeen(ctx context.Context, userID, id uuid.UUID, seen bool) error
 	MarkSeenBulk(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID, seen bool) error
 	Delete(ctx context.Context, userID, id uuid.UUID) error
+	DeleteThreadForOrg(ctx context.Context, orgID uuid.UUID, threadID string) error
+	ThreadActionTargets(ctx context.Context, orgID uuid.UUID, threadID string) ([]UniboxThreadActionTarget, error)
 
 	// Snooze: per (user, thread). UpsertSnooze adopts the new
 	// snoozed_until even if one already exists; DeleteSnooze removes
@@ -64,6 +66,13 @@ type UniboxRepository interface {
 	// step that knows the contact but not the thread can still label it.
 	AddThreadLabels(ctx context.Context, userID uuid.UUID, threadID string, categoryIDs []uuid.UUID) error
 	LatestThreadIDForContact(ctx context.Context, userID uuid.UUID, email string) (string, error)
+}
+
+// UniboxThreadActionTarget is the provider identity needed to mutate one
+// message while ensuring it belongs to the selected organization.
+type UniboxThreadActionTarget struct {
+	EmailID uuid.UUID
+	GmailID string
 }
 
 type uniboxRepository struct {
@@ -598,6 +607,41 @@ func (r *uniboxRepository) Delete(ctx context.Context, userID, id uuid.UUID) err
 		userID, id,
 	)
 	return err
+}
+
+func (r *uniboxRepository) DeleteThreadForOrg(ctx context.Context, orgID uuid.UUID, threadID string) error {
+	_, err := r.db.Exec(ctx,
+		`DELETE FROM unibox_emails
+		 WHERE thread_id = $2
+		   AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)`,
+		orgID, threadID,
+	)
+	return err
+}
+
+func (r *uniboxRepository) ThreadActionTargets(ctx context.Context, orgID uuid.UUID, threadID string) ([]UniboxThreadActionTarget, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT email_id, gmail_id
+		 FROM unibox_emails
+		 WHERE thread_id = $2
+		   AND gmail_id <> ''
+		   AND email_id IN (SELECT id FROM email_accounts WHERE organization_id = $1)`,
+		orgID, threadID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	targets := make([]UniboxThreadActionTarget, 0)
+	for rows.Next() {
+		var target UniboxThreadActionTarget
+		if err := rows.Scan(&target.EmailID, &target.GmailID); err != nil {
+			return nil, err
+		}
+		targets = append(targets, target)
+	}
+	return targets, rows.Err()
 }
 
 // queryPreviewList executes a query returning preview rows with limit+1 pagination.
