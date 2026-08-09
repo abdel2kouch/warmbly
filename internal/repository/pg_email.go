@@ -1240,7 +1240,7 @@ func (r *emailRepository) GetByCampaignSenders(ctx context.Context, _ string, ca
 	// older campaigns can predate workspace ownership migration.
 	rows, err := r.DB.Query(ctx, query, campaignID)
 	if err != nil {
-		db.CaptureError(err, query, []any{userID, campaignID}, "query")
+		db.CaptureError(err, query, []any{campaignID}, "query")
 		return nil, errx.InternalError()
 	}
 	defer rows.Close()
