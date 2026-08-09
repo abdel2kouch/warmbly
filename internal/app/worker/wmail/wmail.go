@@ -125,6 +125,11 @@ func NewWMail(
 				OnMessageRemove: mail.onGoogleMessageRemove,
 				OnLabelAdd:      mail.onGoogleMessageLabelsAdded,
 				OnLabelRemove:   mail.onGoogleMessageLabelsRemoved,
+				// Gmail's OAuth token source invokes this callback whenever it
+				// refreshes an access token. Leaving it nil made the first sync
+				// after an access-token expiry panic before the inbox could be
+				// updated (and before the new token could be persisted).
+				OnTokenRefresh: mail.onTokenUpdate,
 			},
 			LastHistoryID: data.Google.LastHistoryID,
 		}
