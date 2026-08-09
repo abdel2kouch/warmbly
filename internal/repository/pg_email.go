@@ -1217,7 +1217,7 @@ type CampaignSenderAccount struct {
 // explicit campaign_senders pool instead of email tags. Only enabled senders
 // backing an active mailbox are returned; the per-sender weight/cursor/last-send
 // ride along for rotation.
-func (r *emailRepository) GetByCampaignSenders(ctx context.Context, userID string, campaignID uuid.UUID) ([]CampaignSenderAccount, *errx.Error) {
+func (r *emailRepository) GetByCampaignSenders(ctx context.Context, _ string, campaignID uuid.UUID) ([]CampaignSenderAccount, *errx.Error) {
 	query := `
 		SELECT
 		 ea.id, ea.user_id, ea.email, ea.name, ea.signature_plain, ea.signature_html, ea.signature_sync, ea.signature_code,
@@ -1229,18 +1229,16 @@ func (r *emailRepository) GetByCampaignSenders(ctx context.Context, userID strin
 		 cs.weight, cs.rotation_position, cs.last_sent_at
 		FROM email_accounts ea
 		JOIN campaign_senders cs ON cs.email_account_id = ea.id
-		JOIN campaigns c ON c.id = cs.campaign_id
-		WHERE cs.campaign_id = $2
+		WHERE cs.campaign_id = $1
 		  AND cs.enabled
-		  -- Campaign sender pools are workspace-scoped.  A mailbox may have been
-		  -- connected by a different member than the campaign's legacy user_id,
-		  -- so accept either the original owner or the shared organization.
-		  AND (ea.user_id = $1 OR ea.organization_id IS NOT DISTINCT FROM c.organization_id)
 		  AND ea.status = 'active'
 		ORDER BY ea.id
 	`
 
-	rows, err := r.DB.Query(ctx, query, userID, campaignID)
+	// campaign_senders is the validated, campaign-scoped source of truth for an
+	// explicit pool. Do not re-filter it by legacy campaign ownership fields:
+	// older campaigns can predate workspace ownership migration.
+	rows, err := r.DB.Query(ctx, query, campaignID)
 	if err != nil {
 		db.CaptureError(err, query, []any{userID, campaignID}, "query")
 		return nil, errx.InternalError()
