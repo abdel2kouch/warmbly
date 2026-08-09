@@ -82,7 +82,7 @@ func (c *Client) Trash(ctx context.Context, messageID string) error {
 		return fmt.Errorf("gmail service not initialized")
 	}
 
-	if err := c.srv.Users.Messages.Trash("me", messageID).Context(ctx).Do(); err != nil {
+	if _, err := c.srv.Users.Messages.Trash("me", messageID).Context(ctx).Do(); err != nil {
 		return fmt.Errorf("failed to move message to trash: %w", err)
 	}
 	return nil
