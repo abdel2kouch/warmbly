@@ -6,6 +6,7 @@
 // path with a native datetime input.
 
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -149,6 +150,7 @@ function defaultCustomSnoozeValue(): string {
 }
 
 export function ThreadView({ threadId, emailId }: ThreadViewProps) {
+	const navigate = useNavigate();
   const q = useThread(threadId, emailId);
   const scheduledQ = useThreadScheduled(threadId);
   const accounts = useAppStore((s) => s.emails);
@@ -193,7 +195,7 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
       queryClient.invalidateQueries({ queryKey: ["unibox", "count"] });
       queryClient.invalidateQueries({ queryKey: ["unibox", "thread", threadId] });
       if (kind === "archive" || kind === "trash") {
-        window.history.back();
+		navigate("/app/unibox");
       }
     },
     onError: () => toast.error("Couldn't update this thread"),
