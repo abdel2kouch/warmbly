@@ -107,9 +107,9 @@ const (
 	// per-org is intentionally not exposed in the override editor
 	// because the per-day shape protects abuse posture rather than
 	// product utility.
-	DailyThrottleNewCampaigns = 20 // new campaigns per org per day
-	DailyThrottleNewMailboxes = 5  // newly connected mailboxes per org per day
-	DailyThrottleNewOrgs      = 3  // new workspaces per owner per day
+	DailyThrottleNewCampaigns = 20  // new campaigns per org per day
+	DailyThrottleNewMailboxes = 100 // newly connected mailboxes per org per day
+	DailyThrottleNewOrgs      = 3   // new workspaces per owner per day
 
 	// DailyThrottleNewScheduledSends caps how many NEW scheduled-send
 	// schedules a single user can create in a rolling 24h window. The
