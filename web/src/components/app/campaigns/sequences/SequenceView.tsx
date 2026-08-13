@@ -13,6 +13,7 @@ import { Label, TextInput } from "@/components/ui/field";
 import useUpdateSequence from "@/lib/api/hooks/app/campaigns/sequences/useUpdateSequence";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
+import { promptToHtml } from "./emailPreview";
 
 // Body fields the composer owns. body_sync/body_code are legacy editor-only
 // flags (they don't affect sending), so the composer keeps HTML + plain in
@@ -20,7 +21,12 @@ import buildError from "@/lib/helper/buildError";
 type Draft = Pick<Sequence, "name" | "subject" | "body_plain" | "body_html">;
 
 function toDraft(s: Sequence): Draft {
-    return { name: s.name, subject: s.subject, body_plain: s.body_plain, body_html: s.body_html };
+    return {
+        name: s.name,
+        subject: s.subject,
+        body_plain: s.body_plain,
+        body_html: s.body_html || promptToHtml(s.body_plain),
+    };
 }
 
 export default function SequenceView({

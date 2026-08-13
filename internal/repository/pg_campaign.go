@@ -474,6 +474,7 @@ func (r *campaignRepository) Create(ctx context.Context, userID string, orgID *u
 	// Initial sequences. Position is the array index; wait_after defaults
 	// to 0 for the first step and 3 days for any follow-ups so a default
 	// wizard run still produces something usable.
+	var firstSequenceID *uuid.UUID
 	if len(data.Sequences) > 0 {
 		for i, seq := range data.Sequences {
 			waitAfter := 0
@@ -504,20 +505,27 @@ func (r *campaignRepository) Create(ctx context.Context, userID string, orgID *u
 					body_plain, body_html, body_sync, body_code,
 					wait_after, position
 				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				RETURNING id
 			`
 			seqParams := []any{
 				campaign.ID, orgID, seq.Name, seq.Subject,
 				seq.BodyPlain, bodyHTML, bodySync, bodyCode,
 				waitAfter, i + 1,
 			}
-			if _, err := tx.Exec(ctx, seqInsert, seqParams...); err != nil {
-				db.CaptureError(err, seqInsert, seqParams, "exec")
+			var sequenceID uuid.UUID
+			if err := tx.QueryRow(ctx, seqInsert, seqParams...).Scan(&sequenceID); err != nil {
+				db.CaptureError(err, seqInsert, seqParams, "queryrow")
 				return nil, errx.InternalError()
+			}
+			if i == 0 {
+				firstSequenceID = &sequenceID
 			}
 		}
 	}
 
-	// A/B variants.
+	// Initial A/B variants belong to the first email step so the sequence editor
+	// can display and edit them. Campaign-level variants remain available through
+	// the dedicated variant endpoints for legacy and advanced callers.
 	for _, v := range data.Variants {
 		weight := v.Weight
 		if weight <= 0 {
@@ -533,12 +541,12 @@ func (r *campaignRepository) Create(ctx context.Context, userID string, orgID *u
 		}
 		variantInsert := `
 			INSERT INTO campaign_ab_variants (
-				campaign_id, name, weight, subject, body_html, body_plain,
+				campaign_id, sequence_id, name, weight, subject, body_html, body_plain,
 				is_control, is_active, metadata, created_at, updated_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
 		`
 		variantParams := []any{
-			campaign.ID, v.Name, weight, v.Subject, v.BodyHTML, v.BodyPlain,
+			campaign.ID, firstSequenceID, v.Name, weight, v.Subject, v.BodyHTML, v.BodyPlain,
 			v.IsControl, isActive, metaBytes,
 		}
 		if _, err := tx.Exec(ctx, variantInsert, variantParams...); err != nil {

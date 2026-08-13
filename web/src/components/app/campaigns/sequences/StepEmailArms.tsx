@@ -15,7 +15,7 @@ import type ABVariant from "@/lib/api/models/app/campaigns/ABVariant";
 import type { ABVariantStats } from "@/lib/api/models/app/campaigns/ABVariant";
 import { Label, TextInput } from "@/components/ui/field";
 import EmailContentEditor from "./EmailContentEditor";
-import { htmlToPlain } from "./emailPreview";
+import { htmlToPlain, promptToHtml } from "./emailPreview";
 import SequenceView from "./SequenceView";
 import StepSplitAllocator, { type SplitArm } from "./StepSplitAllocator";
 import {
@@ -29,10 +29,10 @@ import { useConfirm } from "@/hooks/context/confirm";
 import type { AppError } from "@/lib/api/client/normalizeError";
 import buildError from "@/lib/helper/buildError";
 
-const LETTERS = ["B", "C", "D", "E", "F"];
+const LETTERS = ["B", "C", "D", "E", "F", "G", "H", "I", "J"];
 // Must match abControlWeight in internal/app/advanced/service.go.
 const CONTROL_WEIGHT = 100;
-const MAX_VARIANTS = 5;
+const MAX_VARIANTS = 9;
 
 const clampW = (w: number) => Math.min(100, Math.max(1, Math.round(w)));
 const err = (e: unknown) => toast.error(buildError(e as unknown as AppError));
@@ -249,16 +249,17 @@ function VariantEditor({
 
     const [name, setName] = React.useState(variant.name);
     const [subject, setSubject] = React.useState(variant.subject);
-    const [bodyHtml, setBodyHtml] = React.useState(variant.body_html);
+    const storedBodyHtml = variant.body_html || promptToHtml(variant.body_plain);
+    const [bodyHtml, setBodyHtml] = React.useState(storedBodyHtml);
 
     React.useEffect(() => {
         setName(variant.name);
         setSubject(variant.subject);
-        setBodyHtml(variant.body_html);
+        setBodyHtml(variant.body_html || promptToHtml(variant.body_plain));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [variant.id, variant.updated_at]);
 
-    const dirty = name !== variant.name || subject !== variant.subject || bodyHtml !== variant.body_html;
+    const dirty = name !== variant.name || subject !== variant.subject || bodyHtml !== storedBodyHtml;
 
     const save = () => {
         update.mutate(
