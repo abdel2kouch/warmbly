@@ -37,8 +37,8 @@ func (s *emailService) Search(ctx context.Context, orgID, search, cursor, tag, l
 	return s.emailRepository.Search(ctx, orgID, search, cursorId, tagId, limitN, allowedAccountIDs)
 }
 
-func (s *emailService) Get(ctx context.Context, orgID, emailAccountID string) (*models.Email, *errx.Error) {
-	return s.emailRepository.Get(ctx, orgID, emailAccountID)
+func (s *emailService) Get(ctx context.Context, userID, emailAccountID string) (*models.Email, *errx.Error) {
+	return s.emailRepository.Get(ctx, userID, emailAccountID)
 }
 
 func (s *emailService) Update(ctx context.Context, userID, emailAccountID string, udata *models.UpdateEmail) (*models.Email, *errx.Error) {

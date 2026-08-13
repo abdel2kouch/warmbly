@@ -41,6 +41,7 @@ type OAuthCredentials struct {
 
 type EmailRepository interface {
 	Search(ctx context.Context, userID, search string, cursor, tag *string, limit int32, allowedAccountIDs []uuid.UUID) (*models.EmailsResult, *errx.Error)
+	// Get returns a mailbox owned by userID. Use Search for organization-scoped lists.
 	Get(ctx context.Context, userID, emailAccountID string) (*models.Email, *errx.Error)
 	GetByID(ctx context.Context, emailAccountID uuid.UUID) (*models.Email, *errx.Error)
 	GetByTags(ctx context.Context, userID string, tags []string) ([]models.Email, *errx.Error)
@@ -606,10 +607,11 @@ func (r *emailRepository) Search(ctx context.Context, orgID, search string, curs
 	}, nil
 }
 
-func (r *emailRepository) Get(ctx context.Context, orgID, emailAccountID string) (*models.Email, *errx.Error) {
+func (r *emailRepository) Get(ctx context.Context, userID, emailAccountID string) (*models.Email, *errx.Error) {
 	query := `
 		SELECT
-		ea.id, ea.email, ea.name, ea.signature_plain, ea.signature_html, ea.signature_sync, ea.signature_code,
+		ea.id, ea.user_id, ea.organization_id, ea.worker_id,
+		ea.email, ea.name, ea.signature_plain, ea.signature_html, ea.signature_sync, ea.signature_code,
 		 ea.provider, ea.status, COALESCE(ea.last_synced_at, ea.created_at) AS last_synced_at, ea.last_id, ea.campaign_limit,
 		 ea.min_wait_time, ea.reply_to, ea.tracking_domain, ea.tracking_domain_verified, ea.tracking_domain_verified_at,
 		 ea.auth_state, ea.auth_spf, ea.auth_dkim, ea.auth_dmarc, ea.auth_dmarc_policy, ea.auth_reason, ea.auth_checked_at,
@@ -619,12 +621,12 @@ func (r *emailRepository) Get(ctx context.Context, orgID, emailAccountID string)
 		 COALESCE(array_agg(eat.tag_id) FILTER (WHERE eat.tag_id IS NOT NULL), '{}') AS tags
 		FROM email_accounts ea
 		LEFT JOIN email_tags eat ON eat.email_id = ea.id
-		WHERE ea.organization_id = $1 AND ea.id = $2
+		WHERE ea.user_id = $1 AND ea.id = $2
 		GROUP BY ea.id
 	`
 
 	params := []any{
-		orgID,
+		userID,
 		emailAccountID,
 	}
 
@@ -634,7 +636,8 @@ func (r *emailRepository) Get(ctx context.Context, orgID, emailAccountID string)
 		query,
 		params...,
 	).Scan(
-		&i.ID, &i.Email, &i.Name, &i.SignaturePlain, &i.SignatureHTML, &i.SignatureSync, &i.SignatureCode, &i.Provider, &i.Status,
+		&i.ID, &i.UserID, &i.OrganizationID, &i.WorkerID,
+		&i.Email, &i.Name, &i.SignaturePlain, &i.SignatureHTML, &i.SignatureSync, &i.SignatureCode, &i.Provider, &i.Status,
 		&i.LastSyncedAt, &i.LastID, &i.CampaignLimit, &i.MinWaitTime, &i.ReplyTo, &i.TrackingDomain, &i.TrackingDomainVerified, &i.TrackingDomainVerifiedAt,
 		&i.AuthState, &i.AuthSPF, &i.AuthDKIM, &i.AuthDMARC, &i.AuthDMARCPolicy, &i.AuthReason, &i.AuthCheckedAt,
 		&i.Warmup, &i.WarmupPausedAt, &i.WarmupBase, &i.WarmupMax, &i.WarmupIncrease,
@@ -642,6 +645,9 @@ func (r *emailRepository) Get(ctx context.Context, orgID, emailAccountID string)
 		&i.CreatedAt, &i.UpdatedAt, &i.Tags,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errx.ErrNotFound
+		}
 		db.CaptureError(err, query, params, "queryrow")
 		return nil, errx.InternalError()
 	}

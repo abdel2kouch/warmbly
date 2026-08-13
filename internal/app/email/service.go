@@ -22,6 +22,7 @@ import (
 
 type EmailService interface {
 	Search(ctx context.Context, userID, search, cursor, tag, limit string, allowedAccountIDs []uuid.UUID) (*models.EmailsResult, *errx.Error)
+	// Get retrieves a mailbox belonging to the current user.
 	Get(ctx context.Context, userID, emailAccountID string) (*models.Email, *errx.Error)
 	Update(ctx context.Context, userID, emailAccountID string, udata *models.UpdateEmail) (*models.Email, *errx.Error)
 	// BulkUpdateTags adds/removes tags across many of the user's mailboxes
