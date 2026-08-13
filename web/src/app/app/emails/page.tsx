@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import type { AppError } from "@/lib/api/client/normalizeError";
+import buildError from "@/lib/helper/buildError";
 import useEmails from "@/lib/api/hooks/app/emails/useEmails";
 import { NoAccess } from "@/components/layout/NoAccess";
 import { usePermission } from "@/hooks/usePermission";
@@ -147,11 +149,19 @@ export default function AddressesPage() {
             async () => {
                 setRemoving(true);
                 const results = await Promise.allSettled(selected.map((id) => removeEmail(id)));
-                const failed = results.filter((r) => r.status === "rejected").length;
+                const failures = results.filter(
+                    (r): r is PromiseRejectedResult => r.status === "rejected",
+                );
+                const failed = failures.length;
                 await queryClient.invalidateQueries({ queryKey: ["emails"] });
                 setSelected([]);
                 setRemoving(false);
-                if (failed > 0) toast.error(`${failed} mailbox${failed > 1 ? "es" : ""} couldn't be removed`);
+                if (failed > 0) {
+                    const reason = buildError(failures[0].reason as AppError);
+                    toast.error(
+                        `${failed} mailbox${failed > 1 ? "es" : ""} couldn't be removed — ${reason}`,
+                    );
+                }
                 else toast.success(`Removed ${n} mailbox${n > 1 ? "es" : ""}`);
             },
         );
