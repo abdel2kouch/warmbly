@@ -4,6 +4,7 @@ import { useUserProfile } from "@/hooks/context/user";
 import useCampaigns from "@/lib/api/hooks/app/campaigns/useCampaigns";
 import useStartCampaign from "@/lib/api/hooks/app/campaigns/useStartCampaign";
 import useStopCampaign from "@/lib/api/hooks/app/campaigns/useStopCampaign";
+import useDeleteCampaign from "@/lib/api/hooks/app/campaigns/useDeleteCampaign";
 import useUpdateCampaign from "@/lib/api/hooks/app/campaigns/useUpdateCampaign";
 import { useConfirm } from "@/hooks/context/confirm";
 import { NewCampaignDialog } from "@/components/app/campaigns/NewCampaignDialog";
@@ -28,12 +29,14 @@ import {
     FilterIcon,
     FolderIcon,
     Loader2Icon,
+    MoreHorizontalIcon,
     type LucideIcon,
     PauseIcon,
     PlayIcon,
     PlusIcon,
     RefreshCcwIcon,
     Settings2Icon,
+    Trash2Icon,
 } from "lucide-react";
 import {
     EmptyBlock,
@@ -258,8 +261,10 @@ export default function CampaignsPage() {
     const p = useUserProfile();
     const confirm = useConfirm();
     const canView = usePermission("VIEW_CAMPAIGNS");
+    const canManage = usePermission("MANAGE_CAMPAIGNS");
     const startCampaign = useStartCampaign();
     const stopCampaign = useStopCampaign();
+    const deleteCampaign = useDeleteCampaign();
     const [folder, setFolder] = useState<string>("");
     const [query, setQuery] = useState<string>("");
     const [status, setStatus] = useState<StatusFilter>("all");
@@ -285,6 +290,24 @@ export default function CampaignsPage() {
         } catch {
             /* toast.promise already surfaced */
         }
+    }
+
+    function removeCampaign(campaign: Campaign) {
+        const warning = campaign.status === "active"
+            ? `Delete ${campaign.name}? This will stop sending immediately and permanently remove the campaign, its steps, and its send history.`
+            : `Delete ${campaign.name}? This permanently removes the campaign, its steps, and its send history.`;
+        confirm?.show(warning, async () => {
+            confirm?.setLoading(true);
+            try {
+                await toast.promise(deleteCampaign.mutateAsync(campaign.id), {
+                    loading: "Deleting campaign…",
+                    success: "Campaign deleted",
+                    error: (e: AppError) => buildError(e),
+                });
+            } finally {
+                confirm?.setLoading(false);
+            }
+        });
     }
 
     const campaignsData = useCampaigns({ query, folder });
@@ -553,6 +576,34 @@ export default function CampaignsPage() {
                                             : "—"}
                                     </span>
                                     <CampaignFolderMenu campaign={c} folders={folders} />
+                                    {canManage && (
+                                        <PopoverMenu align="end">
+                                            <PopoverMenuTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                    }}
+                                                    className="size-6 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0"
+                                                    aria-label="Campaign actions"
+                                                    title="Campaign actions"
+                                                >
+                                                    <MoreHorizontalIcon className="w-3.5 h-3.5" />
+                                                </button>
+                                            </PopoverMenuTrigger>
+                                            <PopoverMenuContent minWidth={170}>
+                                                <PopoverMenuLabel>Campaign actions</PopoverMenuLabel>
+                                                <PopoverMenuItem
+                                                    danger
+                                                    icon={<Trash2Icon className="w-3 h-3" />}
+                                                    onSelect={() => removeCampaign(c)}
+                                                >
+                                                    Delete campaign
+                                                </PopoverMenuItem>
+                                            </PopoverMenuContent>
+                                        </PopoverMenu>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={(e) => {

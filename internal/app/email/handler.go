@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/google/uuid"
 	"github.com/warmbly/warmbly/internal/errx"
 	"github.com/warmbly/warmbly/internal/infrastructure/pubsub"
@@ -117,6 +118,21 @@ func (s *emailService) Delete(ctx context.Context, userID, emailAccountID string
 
 	if xerr := s.emailRepository.Delete(ctx, userID, emailAccountID); xerr != nil {
 		return xerr
+	}
+
+	// The account is now gone from the database, so tell its assigned worker to
+	// stop syncing it as well. This is deliberately after the delete: a failed
+	// database removal must not disconnect a mailbox from its worker.
+	if s.publisher != nil && account != nil && account.WorkerID != nil {
+		if err := s.publisher.PublishRemoveEmail(ctx, *account.WorkerID, &models.RemoveWorkerEmail{
+			UserID:  account.UserID,
+			EmailID: account.ID.String(),
+		}); err != nil {
+			// Database removal is already complete. Keep the API successful and
+			// let the worker reconciler remove the stale mailbox if delivery is
+			// temporarily unavailable.
+			sentry.CaptureException(err)
+		}
 	}
 
 	s.removeFromAllWarmupPools(ctx, account)
