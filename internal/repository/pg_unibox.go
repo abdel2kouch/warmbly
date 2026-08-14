@@ -354,7 +354,7 @@ func (r *uniboxRepository) GetBySender(ctx context.Context, userID uuid.UUID, se
 //     sender, mailbox) run inside the windowed subquery, so the
 //     representative + counts reflect the matched messages; with no
 //     content filter (the default inbox) that's the whole thread.
-//   - thread/representative-level filters (awaiting reply, category)
+//   - thread/representative-level filters (awaiting reply, campaign reply, category)
 //     and keyset pagination run on the collapsed row.
 func (r *uniboxRepository) Search(ctx context.Context, orgID, userID uuid.UUID, params *models.MailSearchParams) (*models.MailSearchResult, error) {
 	previewCols := make([]string, len(mailFieldsPreview))
@@ -478,7 +478,22 @@ func (r *uniboxRepository) Search(ctx context.Context, orgID, userID uuid.UUID, 
 	for i, c := range mailFieldsPreview {
 		outerCols[i] = "b." + c
 	}
-	query := fmt.Sprintf(`
+	queryPrefix := ""
+	if params.CampaignReplies != nil && *params.CampaignReplies {
+		queryPrefix = `WITH contacted_leads AS MATERIALIZED (
+			SELECT DISTINCT lower(contact.email) AS email
+			FROM tasks task
+			JOIN campaign_tasks campaign_task ON campaign_task.task_id = task.id
+			JOIN contacts contact ON contact.id = campaign_task.contact_id
+			WHERE task.email_account_id IN (
+				SELECT id FROM email_accounts WHERE organization_id = $1
+			)
+			  AND task.task_type = 'campaign'
+			  AND task.status = 'completed'
+		)
+		`
+	}
+	query := fmt.Sprintf(`%s
 		SELECT %s, b.message_count, b.has_unread,
 			COALESCE(
 				(
@@ -489,7 +504,7 @@ func (r *uniboxRepository) Search(ctx context.Context, orgID, userID uuid.UUID, 
 				), '[]'::json
 			) AS labels
 		FROM (%s) b
-		WHERE b.rn = 1`, strings.Join(outerCols, ", "), inner)
+		WHERE b.rn = 1`, queryPrefix, strings.Join(outerCols, ", "), inner)
 
 	// Awaiting reply: the representative (latest) message is from one of
 	// the user's own mailboxes — i.e. they're waiting on the recipient.
@@ -510,6 +525,25 @@ func (r *uniboxRepository) Search(ctx context.Context, orgID, userID uuid.UUID, 
 				WHERE d.organization_id = $1
 				  AND d.thread_id = b.thread_id
 				  AND d.status = 'pending'
+			)`
+	}
+
+	// Campaign replies are inbound messages from contacts this organization
+	// has successfully emailed through a campaign. Task history keeps this
+	// reliable even when the originating campaign is later deleted.
+	if params.CampaignReplies != nil && *params.CampaignReplies {
+		query += `
+			AND NOT EXISTS (
+				SELECT 1
+				FROM unnest(b.from_addr) AS sender(addr)
+				JOIN email_accounts own ON own.organization_id = $1
+				WHERE lower(COALESCE(substring(sender.addr FROM '<([^>]+)>'), trim(sender.addr))) = lower(own.email)
+			)
+			AND EXISTS (
+				SELECT 1
+				FROM unnest(b.from_addr) AS sender(addr)
+				JOIN contacted_leads lead
+				  ON lead.email = lower(COALESCE(substring(sender.addr FROM '<([^>]+)>'), trim(sender.addr)))
 			)`
 	}
 
@@ -976,6 +1010,17 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 		),
 		user_mailbox_emails AS (
 			SELECT email FROM email_accounts WHERE organization_id = $1
+		),
+		contacted_leads AS MATERIALIZED (
+			SELECT DISTINCT lower(contact.email) AS email
+			FROM tasks task
+			JOIN campaign_tasks campaign_task ON campaign_task.task_id = task.id
+			JOIN contacts contact ON contact.id = campaign_task.contact_id
+			WHERE task.email_account_id IN (
+				SELECT id FROM email_accounts WHERE organization_id = $1
+			)
+			  AND task.task_type = 'campaign'
+			  AND task.status = 'completed'
 		)
 		SELECT
 			COUNT(*) FILTER (WHERE NOT t.is_snoozed)                            AS total,
@@ -985,6 +1030,19 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 			COUNT(*) FILTER (WHERE t.is_snoozed)                                AS snoozed,
 			(SELECT COUNT(*) FROM latest_per_thread l
 				WHERE EXISTS (SELECT 1 FROM user_mailbox_emails u WHERE u.email = ANY(l.from_addr)))             AS awaiting,
+			(SELECT COUNT(*) FROM latest_per_thread l
+				WHERE NOT EXISTS (
+					SELECT 1
+					FROM unnest(l.from_addr) AS sender(addr)
+					JOIN email_accounts own ON own.organization_id = $1
+					WHERE lower(COALESCE(substring(sender.addr FROM '<([^>]+)>'), trim(sender.addr))) = lower(own.email)
+				)
+				AND EXISTS (
+					SELECT 1
+					FROM unnest(l.from_addr) AS sender(addr)
+					JOIN contacted_leads lead
+					  ON lead.email = lower(COALESCE(substring(sender.addr FROM '<([^>]+)>'), trim(sender.addr)))
+				))                                                                                                    AS campaign_replies,
 			(SELECT COUNT(*) FROM ai_thread_drafts d
 				WHERE d.organization_id = $1 AND d.status = 'pending')                                          AS awaiting_agent_draft
 		FROM threads t
@@ -995,6 +1053,7 @@ func (r *uniboxRepository) Overview(ctx context.Context, orgID uuid.UUID) (*mode
 		&overview.Week,
 		&overview.Snoozed,
 		&overview.AwaitingReply,
+		&overview.CampaignReplies,
 		&overview.AwaitingAgentDraft,
 	)
 	if err != nil {

@@ -21,6 +21,7 @@ The Inbox section of the rail has these views, each with a live count:
 | --- | --- |
 | All | Every conversation across every mailbox |
 | Unread | Conversations with at least one unread message |
+| Campaign replies | Inbound conversations from leads who have received at least one campaign email from this workspace |
 | Today | Conversations with activity today |
 | This week | Conversations from the last 7 days |
 | Awaiting reply | Conversations where the other side is waiting on you |
@@ -33,7 +34,13 @@ All of the counts in the rail come from the server in a single request, so they 
 
 ### Searching and filtering
 
-The search box at the top of the conversation list searches within whatever scope you are in. Press `/` to jump straight to it. For more precise filtering, open the filters (the settings icon next to search) to narrow by sender, mailbox, tag, category, date range, and read state.
+The search box at the top of the conversation list searches within whatever scope you are in. Press `/` to jump straight to it. For more precise filtering, open the filters (the settings icon next to search) to narrow by sender, conversation source, mailbox, tag, category, date range, and read state. Choose **Campaign replies** under conversation source to combine that rule with another filter, such as one mailbox or a date range.
+
+### Campaign replies
+
+The **Campaign replies** view keeps the inbox focused on outreach conversations. Warmbly shows a thread there only when its newest message is inbound and the sender matches a contact who has received at least one successfully sent campaign email from your workspace. Matching uses the sender's normalized email address and actual campaign send history, not contact membership alone.
+
+Delivery notices, warmup conversations, newsletters, and direct messages from addresses you have never contacted through a campaign stay in **All** and do not appear in **Campaign replies**. Mail is not deleted or moved at the provider. The view is only a filter, so you can return to **All** whenever you need the complete mailbox history. A later message from a previously contacted lead still qualifies even if it starts a new email thread.
 
 ## Threading
 

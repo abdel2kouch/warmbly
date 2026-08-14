@@ -33,6 +33,8 @@ export interface UniboxSearchParams {
   awaitingReply?: boolean;
   /** Agent drafts: threads with a pending inbox-agent reply draft. */
   agentDrafts?: boolean;
+  /** Inbound threads from leads successfully contacted by a campaign. */
+  campaignReplies?: boolean;
   /**
    * Conversation-label filter. Threads carrying any of these category
    * ids match. Sent to the server as `category_ids`.

@@ -120,6 +120,11 @@ func (h *Handler) GetUniboxIncoming(c *gin.Context) {
 		params.AgentDraft = &v
 	}
 
+	if c.Query("campaign_replies") == "true" {
+		v := true
+		params.CampaignReplies = &v
+	}
+
 	// Parse date filters
 	if sinceStr := c.Query("since"); sinceStr != "" {
 		if since, err := time.Parse("2006-01-02", sinceStr); err == nil {

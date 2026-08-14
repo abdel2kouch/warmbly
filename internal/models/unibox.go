@@ -186,6 +186,9 @@ type MailSearchParams struct {
 	// AgentDraft, when true, narrows to threads that have a pending
 	// inbox-agent draft awaiting human review (M10). nil = no filter.
 	AgentDraft *bool
+	// CampaignReplies, when true, narrows to inbound threads whose latest
+	// sender has a completed campaign send in this organization.
+	CampaignReplies *bool
 	// CategoryIDs restricts results to threads carrying at least one of
 	// these conversation labels. Empty = no category filter.
 	CategoryIDs []uuid.UUID
@@ -255,6 +258,8 @@ type UniboxOverview struct {
 	Week          int64 `json:"week"`
 	Snoozed       int64 `json:"snoozed"`
 	AwaitingReply int64 `json:"awaiting_reply"`
+	// CampaignReplies is the count of inbound threads from contacted leads.
+	CampaignReplies int64 `json:"campaign_replies"`
 	// AwaitingAgentDraft is the count of threads with a pending inbox-agent draft
 	// waiting for human review (M10).
 	AwaitingAgentDraft int64 `json:"awaiting_agent_draft"`

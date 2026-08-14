@@ -3,7 +3,7 @@
 // Reads /unibox/overview so every count is server-truth. Three
 // sections:
 //
-//   1. Inbox — All / Unread / Today / Week / Awaiting reply / Snoozed
+//   1. Inbox — All / Unread / Campaign replies / Today / Week / Snoozed
 //   2. Mailboxes — every connected account with its unread count.
 //      Collapses to 6 once the user has more than 8 (with a
 //      "Show all (N)" toggle) and adds an in-section search so the
@@ -18,6 +18,7 @@ import {
   ClockIcon,
   InboxIcon,
   MailboxIcon,
+  MegaphoneIcon,
   MoonIcon,
   PenLineIcon,
   ReplyIcon,
@@ -39,6 +40,7 @@ export type UniboxScope =
   | { kind: "today" }
   | { kind: "week" }
   | { kind: "awaiting" }
+  | { kind: "campaign_replies" }
   | { kind: "agent_drafts" }
   | { kind: "snoozed" }
   | { kind: "scheduled" }
@@ -117,6 +119,14 @@ export function ScopeRail({ scope, onChange }: ScopeRailProps) {
           count={data?.week}
           active={active === "week"}
           onClick={() => onChange({ kind: "week" })}
+        />
+        <Item
+          icon={<MegaphoneIcon className="w-3.5 h-3.5" />}
+          label="Campaign replies"
+          count={data?.campaign_replies}
+          countTone={data?.campaign_replies ? "accent" : "muted"}
+          active={active === "campaign_replies"}
+          onClick={() => onChange({ kind: "campaign_replies" })}
         />
         <Item
           icon={<ReplyIcon className="w-3.5 h-3.5" />}

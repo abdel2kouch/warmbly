@@ -4,7 +4,7 @@
 //   - free text (subject ILIKE)
 //   - from
 //   - account (one of the user's email_accounts)
-//   - unseen only
+//   - campaign replies / unseen only
 //   - since / until date range
 //   - sort: newest / oldest
 //
@@ -389,6 +389,24 @@ export function UniboxFilterSheet({
                 )}
               </div>
 
+              <SectionBar label="Conversation source" />
+              <div className="px-4 py-3">
+                <Toggle3
+                  value={draft.campaignReplies ?? undefined}
+                  onChange={(v) =>
+                    setDraft((s) => ({ ...s, campaignReplies: v }))
+                  }
+                  options={[
+                    { id: undefined, label: "Any mail" },
+                    { id: true, label: "Campaign replies" },
+                  ]}
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                  Shows inbound mail only when the sender has received a
+                  campaign email from this workspace.
+                </p>
+              </div>
+
               <SectionBar label="Status" />
               <div className="px-4 py-3">
                 <Toggle3
@@ -567,6 +585,7 @@ function countActive(f: UniboxSearchParams): number {
   if (f.tagId) n++;
   if (f.categoryIds && f.categoryIds.length > 0) n++;
   if (f.accountIds && f.accountIds.length > 0) n++;
+  if (f.campaignReplies) n++;
   if (f.unseen !== undefined) n++;
   if (f.since) n++;
   if (f.until) n++;

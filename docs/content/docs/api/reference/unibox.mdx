@@ -21,6 +21,7 @@ Returns the inbox list, collapsed to one row per thread (the newest message), wi
 | `subject` | query | string | Filter by subject (substring). |
 | `unseen` | query | boolean | `true` returns only threads with unread messages. |
 | `awaiting_reply` | query | boolean | `true` returns only threads where the latest message was sent by you (recipient has not replied). |
+| `campaign_replies` | query | boolean | `true` returns only inbound threads whose latest sender has at least one successfully completed campaign send from this organization. |
 | `snoozed` | query | string | `true` returns only snoozed threads. Omit to exclude snoozed threads (default). |
 | `since` | query | string | Lower bound on date, `YYYY-MM-DD`. |
 | `until` | query | string | Upper bound on date, `YYYY-MM-DD`. |
@@ -82,7 +83,7 @@ Returns the org-wide unread message count, optionally scoped to one mailbox. Bac
 
 `GET /unibox/overview`
 
-Rolls up the scope rail and top metric strip in one call: unread, today, week, snoozed, awaiting-reply, and pending-scheduled counts, plus per-mailbox, per-tag, and per-conversation-label breakdowns. Auth: **Scope** `READ_UNIBOX` · **Org permission** `access_unibox`.
+Rolls up the scope rail and top metric strip in one call: unread, campaign-reply, today, week, snoozed, awaiting-reply, and pending-scheduled counts, plus per-mailbox, per-tag, and per-conversation-label breakdowns. Auth: **Scope** `READ_UNIBOX` · **Org permission** `access_unibox`.
 
 ### Response
 
@@ -94,6 +95,7 @@ Rolls up the scope rail and top metric strip in one call: unread, today, week, s
   "week": 88,
   "snoozed": 3,
   "awaiting_reply": 9,
+  "campaign_replies": 14,
   "scheduled_pending": 2,
   "scheduled_pending_max": 50,
   "mailboxes": [

@@ -333,7 +333,8 @@ function hasActiveFilters(p: UniboxSearchParams): boolean {
     p.since ||
     p.until ||
     p.snoozed ||
-    p.awaitingReply,
+    p.awaitingReply ||
+    p.campaignReplies,
   );
 }
 

@@ -112,6 +112,8 @@ export default function UniboxPage() {
         return { kind: "week" };
       case "awaiting":
         return { kind: "awaiting" };
+      case "campaign_replies":
+        return { kind: "campaign_replies" };
       case "agent_drafts":
         return { kind: "agent_drafts" };
       case "snoozed":
@@ -188,6 +190,9 @@ export default function UniboxPage() {
         case "awaiting":
           next.awaitingReply = true;
           break;
+        case "campaign_replies":
+          next.campaignReplies = true;
+          break;
         case "agent_drafts":
           next.agentDrafts = true;
           break;
@@ -244,6 +249,8 @@ export default function UniboxPage() {
         return "This week";
       case "awaiting":
         return "Awaiting reply";
+      case "campaign_replies":
+        return "Campaign replies";
       case "agent_drafts":
         return "Agent drafts";
       case "snoozed":
