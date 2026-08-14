@@ -236,14 +236,15 @@ func (w *WorkerService) sendEmailError(taskID uuid.UUID, emailID uuid.UUID, mail
 		SentAt:         time.Now(),
 	}
 
-	if err := w.Produce(eventType, taskID.String(), result); err != nil {
+	// Task delivery results always use EMAIL_FAILED. Account-health telemetry is
+	// emitted separately below with its own payload and event type.
+	if err := w.Produce(models.JobEventTypeEmailFailed, taskID.String(), result); err != nil {
 		log.Error().Err(err).Str("task_id", taskID.String()).Msg("Failed to produce email error event")
 	}
 
-	// For critical auth/disabled errors, also send a separate error event with full context
-	if eventType == models.JobEventTypeEmailAuthError ||
-		eventType == models.JobEventTypeEmailDisabled ||
-		eventType == models.JobEventTypeEmailRateLimited {
+	// Send a separate account-health event with full context. Never reuse that
+	// event type for SendEmailResult: the consumer expects EmailErrorEvent there.
+	if eventType != models.JobEventTypeEmailFailed {
 
 		userInfo := mailErr.GetUserErrorInfo()
 		errorEvent := models.EmailErrorEvent{

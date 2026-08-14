@@ -504,6 +504,65 @@ func (r *taskRepository) GetLastEmailTime(ctx context.Context, accountID uuid.UU
 	return lastTime, err
 }
 
+// GetCampaignAccountCooldownUntil returns the temporary retry boundary derived
+// from the mailbox's latest failed campaign task. It deliberately lives on the
+// concrete repository so older test doubles do not need another method.
+func (r *taskRepository) GetCampaignAccountCooldownUntil(ctx context.Context, accountID uuid.UUID) (*time.Time, error) {
+	var failedAt time.Time
+	var code string
+	err := r.db.QueryRow(ctx, `
+		SELECT t.updated_at, tf.title
+		FROM tasks t
+		JOIN task_failures tf ON tf.task_id = t.id
+		WHERE t.email_account_id = $1
+		  AND t.task_type = 'campaign'
+		  AND t.status = 'failed'
+		ORDER BY t.updated_at DESC
+		LIMIT 1
+	`, accountID).Scan(&failedAt, &code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	cooldown := time.Minute
+	switch code {
+	case "RATE_LIMIT_EXCEEDED", "QUOTA_EXCEEDED", "SENDING_TOO_FAST":
+		cooldown = 15 * time.Minute
+	case "SERVER_UNREACHABLE", "CONNECTION_LOST":
+		cooldown = 5 * time.Minute
+	}
+	until := failedAt.Add(cooldown)
+	return &until, nil
+}
+
+// FailStaleActiveCampaignTasks releases campaign chains whose worker result was
+// lost after dispatch. Ten-minute-plus active tasks are not legitimate sends:
+// providers answer synchronously and the result event is emitted immediately.
+func (r *taskRepository) FailStaleActiveCampaignTasks(ctx context.Context, olderThan time.Duration) (int64, error) {
+	result, err := r.db.Exec(ctx, `
+		WITH stale AS (
+		  UPDATE tasks
+		  SET status = 'failed', updated_at = NOW()
+		  WHERE task_type = 'campaign'
+		    AND status = 'active'
+		    AND updated_at < NOW() - $1::interval
+		  RETURNING id
+		)
+		INSERT INTO task_failures (task_id, title, message)
+		SELECT id, 'WORKER_RESULT_TIMEOUT',
+		       'The worker did not return a delivery result before the safety timeout.'
+		FROM stale
+		ON CONFLICT (task_id) DO UPDATE
+		SET title = EXCLUDED.title, message = EXCLUDED.message
+	`, olderThan)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 // GetScheduledTasksForAccount gets scheduled tasks for an account on a specific date
 func (r *taskRepository) GetScheduledTasksForAccount(ctx context.Context, accountID uuid.UUID, date time.Time) ([]Task, error) {
 	query := `

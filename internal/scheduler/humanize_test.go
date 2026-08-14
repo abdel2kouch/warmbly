@@ -24,6 +24,15 @@ func TestHumanizeSeconds_RandomisesSubMinute(t *testing.T) {
 	}
 }
 
+func TestHumanizeSeconds_NeverMovesEarlier(t *testing.T) {
+	base := time.Date(2026, 1, 1, 10, 30, 59, 0, time.UTC)
+	for i := 0; i < 100; i++ {
+		if got := humanizeSeconds(base); got.Before(base) {
+			t.Fatalf("humanizeSeconds moved backwards: base=%v got=%v", base, got)
+		}
+	}
+}
+
 func TestDailyVolumeFactor_StableWithinDayAndRanged(t *testing.T) {
 	id := uuid.New()
 	day := time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC)

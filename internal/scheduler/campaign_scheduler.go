@@ -253,6 +253,11 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 	// STEP 8: Build weighted account candidates
 	// Skip accounts whose local time falls outside business hours (8am-8pm)
 	var candidates []AccountCandidate
+	var earliestCooldown *time.Time
+	var cooldownAccountID uuid.UUID
+	type campaignCooldownReader interface {
+		GetCampaignAccountCooldownUntil(context.Context, uuid.UUID) (*time.Time, error)
+	}
 	for _, acct := range accounts {
 		sentToday, err := s.taskRepo.CountCampaignEmailsSentToday(ctx, acct.ID)
 		if err != nil {
@@ -265,6 +270,20 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 		// Skip accounts that have reached their daily limit
 		if remaining <= 0 {
 			continue
+		}
+
+		if reader, ok := s.taskRepo.(campaignCooldownReader); ok {
+			until, cerr := reader.GetCampaignAccountCooldownUntil(ctx, acct.ID)
+			if cerr != nil {
+				return time.Time{}, nil, uuid.Nil, cerr
+			}
+			if until != nil && until.After(time.Now()) {
+				if earliestCooldown == nil || until.Before(*earliestCooldown) {
+					t := *until
+					earliestCooldown, cooldownAccountID = &t, acct.ID
+				}
+				continue
+			}
 		}
 
 		// Health-gate cold sends on the SAME warmup health state used for pool
@@ -356,6 +375,10 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 	// STEP 8.5: Select best account per the campaign's rotation mode.
 	selected := selectAccountByRotationMode(campaign.RotationMode, candidates)
 	if selected == nil {
+		if len(candidates) == 0 && earliestCooldown != nil {
+			deferred := nextScheduleSlot(*earliestCooldown, windows, campaignTZ)
+			return deferred, nil, cooldownAccountID, ErrCampaignDeferred
+		}
 		// ALL accounts at capacity today — push to next day and recompute with
 		// tomorrow's full (ramp-clamped) capacity. The ramp clamp AND the ESP
 		// filter MUST be re-applied here, or tomorrow's recompute over-budgets a
@@ -470,7 +493,24 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 	// (jitter/conflict/distribution can push into a gap between intervals).
 	candidateTime = nextScheduleSlot(candidateTime, windows, campaignTZ)
 
-	// STEP 15: Randomise the sub-minute component so sends never land on :00.
+	// STEP 15: Re-enforce the hard floors after jitter/distribution. Negative
+	// jitter and second randomisation must never move a send before now or before
+	// this mailbox's minimum wait from its last provider-confirmed delivery.
+	floor := time.Now().Add(2 * time.Second)
+	if lastEmailTime != nil {
+		minWaitFloor := lastEmailTime.Add(time.Second * time.Duration(account.MinWaitTime))
+		if minWaitFloor.After(floor) {
+			floor = minWaitFloor
+		}
+	}
+	if candidateTime.Before(floor) {
+		candidateTime = floor
+	}
+	candidateTime = nextScheduleSlot(candidateTime, windows, campaignTZ)
+	candidateTime = resolveConflicts(candidateTime, scheduledTasks, account.MinWaitTime)
+	candidateTime = nextScheduleSlot(candidateTime, windows, campaignTZ)
+
+	// Randomise the sub-minute component without ever moving earlier.
 	return humanizeSeconds(candidateTime), nextPair, account.ID, nil
 }
 

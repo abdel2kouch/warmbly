@@ -34,6 +34,10 @@ type JobsService struct {
 	WarmupEngagementRepo        repository.WarmupEngagementRepository
 	WarmupService               warmupapp.Service
 	WorkerRepo                  repository.WorkerRepository
+	CampaignDeliveryRepository  repository.CampaignDeliveryRepository
+	CampaignProgressRepository  repository.CampaignProgressRepository
+	CampaignRepository          repository.CampaignRepository
+	ContactRepository           repository.ContactRepository
 
 	// Publisher for sending events to workers
 	Publisher events.Publisher

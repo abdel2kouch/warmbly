@@ -621,120 +621,13 @@ func (s *tasksService) HandleCampaignTask(task *proto.ProcessTask) *errx.Error {
 		return nil
 	}
 
-	// STEP 16: Store sent email metadata (encrypted) in database
-	// Note: Full email stored in Cassandra by email sync service
-	taskRecord.MessageID = messageID
-	taskRecord.Status = "completed"
-
-	// STEP 17: Update campaign progress
-	if err := s.campaignProgressRepo.RecordEmailSent(ctx, campaign.ID, contact.ID, sequence.ID); err != nil {
-		// Log but don't fail
-		log.Warn().Err(err).Str("campaign_id", campaign.ID.String()).Str("task_id", taskID.String()).Msg("Failed to record email sent")
-	}
-
-	// Bump today's per-campaign counters. newLead counts ONLY a genuinely-sent
-	// position-1 (first-step) email, so the new-lead/day cap can never under-count
-	// and over-send. Skipped/suppressed/failed tasks never reach this point.
-	if err := s.campaignRepo.IncrementCampaignDailySend(ctx, campaign.ID, nextPair.IsNewLead); err != nil {
-		log.Warn().Err(err).Str("campaign_id", campaign.ID.String()).Str("task_id", taskID.String()).Msg("Failed to increment campaign daily send counter")
-	}
-
-	// Publish campaign progress summary to Pub/Sub for real-time dashboard updates
-	if s.streamingPublisher != nil {
-		if progress, pErr := s.campaignProgressRepo.GetCampaignProgress(ctx, campaign.ID); pErr == nil && progress != nil {
-			s.streamingPublisher.PublishCampaignProgress(ctx, campaign.UserID, campaign.ID, progress)
-		}
-	}
-
-	// Log email sent
-	if s.campaignLogRepo != nil {
-		s.campaignLogRepo.CreateLog(ctx, &repository.CampaignLogEntry{
-			CampaignID: campaign.ID,
-			EventType:  "email_sent",
-			Message:    fmt.Sprintf("Email sent to %s", contact.Email),
-			Metadata: map[string]interface{}{
-				"contact_id":  contact.ID.String(),
-				"sequence_id": sequence.ID.String(),
-				"account_id":  account.ID.String(),
-			},
-		})
-	}
-
-	// STEP 18: Mark task as completed (with advisory lock)
-	if err := s.taskRepo.UpdateTaskStatusWithLock(ctx, taskID, "completed"); err != nil {
+	// Queue publication is not delivery. Keep the task active until the worker
+	// reports Gmail/SMTP/Graph success or failure on the worker-events stream.
+	// The consumer finalizes progress, counters, logs, and sender rotation in one
+	// transaction. This prevents a broker ACK from being shown as "sent".
+	if err := s.taskRepo.UpdateTaskMessageID(ctx, taskID, messageID); err != nil {
 		sentry.CaptureException(err)
 		return errx.InternalError()
-	}
-
-	// STEP 18.5: Advance the explicit-sender rotation cursor on a GENUINE send
-	// only (single atomic UPDATE), so round_robin/least_recently_used cursors
-	// stay coherent and a send-failure/skip never bumps them. The UPDATE is
-	// scoped to (campaign_id, email_account_id), so it's a harmless no-op for
-	// tag/all-resolved mailboxes that have no campaign_senders row.
-	if err := s.campaignRepo.AdvanceCampaignSender(ctx, campaign.ID, account.ID); err != nil {
-		log.Warn().Err(err).Str("campaign_id", campaign.ID.String()).Str("task_id", taskID.String()).Msg("Failed to advance campaign sender cursor")
-	}
-
-	// Publish task completion to Pub/Sub
-	if s.streamingPublisher != nil {
-		s.streamingPublisher.PublishTaskStatus(ctx, campaign.UserID, taskID, pubsub.EventTaskCompleted, "Email sent successfully", map[string]string{
-			"campaign_id": campaign.ID.String(),
-			"contact_id":  contact.ID.String(),
-		})
-
-		// Publish detailed task progress event
-		newProcessedCount := processedCount + 1
-		progress := 0
-		if totalContacts > 0 {
-			progress = (newProcessedCount * 100) / totalContacts
-		}
-		contactName := contact.FirstName
-		if contact.LastName != "" {
-			contactName = contactName + " " + contact.LastName
-		}
-		// Get sequence index
-		sequences, _ := s.campaignRepo.GetSequencesByCampaignID(ctx, campaign.ID)
-		seqIndex := 0
-		for i, seq := range sequences {
-			if seq.ID == sequence.ID {
-				seqIndex = i + 1
-				break
-			}
-		}
-		// EMAIL_SENT (org-scoped): the whole team sees the send + which
-		// lead/step fired, live in the campaign view.
-		s.streamingPublisher.PublishEmailSent(ctx, &pubsub.TaskProgressEvent{
-			BaseEvent:      pubsub.BaseEvent{UserID: campaign.UserID},
-			OrgID:          campaignOrgID(campaign),
-			CampaignID:     campaign.ID.String(),
-			TaskID:         taskID.String(),
-			Status:         "completed",
-			ContactID:      contact.ID.String(),
-			ContactEmail:   contact.Email,
-			ContactName:    contactName,
-			SequenceID:     sequence.ID.String(),
-			SequenceName:   sequence.Name,
-			SequenceIndex:  seqIndex,
-			Progress:       progress,
-			TotalContacts:  totalContacts,
-			ProcessedCount: newProcessedCount,
-		})
-	}
-
-	// STEP 19: Publish events to Kafka
-	s.publishEmailSentEvent(ctx, taskRecord, account, campaign, contact, sequence)
-
-	// STEP 20: Create next campaign task
-	scheduledNext := nextTime
-	if s.advanced != nil && campaign.OrganizationID != nil {
-		if optimized, xerr := s.advanced.OptimizeSendTime(ctx, *campaign.OrganizationID, contact, nextTime); xerr == nil {
-			scheduledNext = optimized
-		}
-	}
-
-	if err := s.createCampaignTask(ctx, campaign.ID, account.ID, scheduledNext); err != nil {
-		// Log but don't fail the current task
-		log.Warn().Err(err).Str("campaign_id", campaign.ID.String()).Str("task_id", taskID.String()).Msg("Failed to create next campaign task")
 	}
 
 	executionStatus = "completed"

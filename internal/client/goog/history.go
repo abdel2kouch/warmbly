@@ -2,12 +2,13 @@ package goog
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/api/googleapi"
 )
 
 func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64, error) {
-	call := c.srv.Users.History.List("me").MaxResults(500).StartHistoryId(lastHistoryID) // It does not include the record that has that exact HistoryID
+	call := c.srv.Users.History.List("me").MaxResults(500).StartHistoryId(lastHistoryID).Context(ctx) // It does not include the record that has that exact HistoryID
 
 	var newLastHistoryID uint64
 
@@ -67,32 +68,34 @@ func (c *Client) FetchHistory(ctx context.Context, lastHistoryID uint64) (uint64
 // 404; continuing to retry that cursor leaves the unified inbox permanently
 // stale. A bounded full inbox pass lets us recover without re-authorizing.
 func (c *Client) ResyncInbox(ctx context.Context) (uint64, error) {
-	call := c.srv.Users.Messages.List("me").LabelIds("INBOX").MaxResults(500)
-	for {
-		resp, err := call.Context(ctx).Do()
-		if err != nil {
-			return 0, HandleError(err)
-		}
-		for _, m := range resp.Messages {
-			full, ferr := c.srv.Users.Messages.Get("me", m.Id).Format("full").Context(ctx).Do()
-			if ferr != nil {
-				if gerr, ok := ferr.(*googleapi.Error); ok && gerr.Code == 404 {
-					continue
-				}
-				return 0, HandleError(ferr)
-			}
-			if err := c.OnMessageAdd(ctx, GmailMessageToEmailData(full)); err != nil {
-				return 0, err
-			}
-		}
-		if resp.NextPageToken == "" {
-			break
-		}
-		call.PageToken(resp.NextPageToken)
-	}
+	// Capture the fresh cursor first. Even if the bounded inbox hydration is
+	// partially rate-limited, returning this cursor lets the worker persist it
+	// and avoids repeating a many-thousand-message bootstrap every minute.
 	profile, err := c.srv.Users.GetProfile("me").Context(ctx).Do()
 	if err != nil {
 		return 0, HandleError(err)
+	}
+	call := c.srv.Users.Messages.List("me").LabelIds("INBOX").MaxResults(100)
+	resp, err := call.Context(ctx).Do()
+	if err != nil {
+		return profile.HistoryId, HandleError(err)
+	}
+	for _, m := range resp.Messages {
+		full, ferr := c.srv.Users.Messages.Get("me", m.Id).Format("full").Context(ctx).Do()
+		if ferr != nil {
+			if gerr, ok := ferr.(*googleapi.Error); ok && gerr.Code == 404 {
+				continue
+			}
+			return profile.HistoryId, HandleError(ferr)
+		}
+		if err := c.OnMessageAdd(ctx, GmailMessageToEmailData(full)); err != nil {
+			return profile.HistoryId, err
+		}
+		select {
+		case <-ctx.Done():
+			return profile.HistoryId, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 	return profile.HistoryId, nil
 }

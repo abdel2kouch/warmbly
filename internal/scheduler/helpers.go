@@ -167,7 +167,11 @@ func calculateFirstSlotTomorrowAt(timezone, startTime string) time.Time {
 // fleet-wide fingerprint in Received headers. Applied as the last step of the
 // schedulers.
 func humanizeSeconds(t time.Time) time.Time {
-	return t.Truncate(time.Minute).Add(time.Duration(rand.Intn(60)) * time.Second)
+	candidate := t.Truncate(time.Minute).Add(time.Duration(rand.Intn(60)) * time.Second)
+	if candidate.Before(t) {
+		candidate = candidate.Add(time.Minute)
+	}
+	return candidate
 }
 
 // avoidRoundTimes adds randomness to avoid exact round times (10:00, 11:00)

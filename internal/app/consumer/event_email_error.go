@@ -200,20 +200,10 @@ func (s *JobsService) HandleEmailRateLimited(ctx context.Context, event models.E
 		}
 	}
 
-	// Mark email account as inactive (terminated due to abuse)
-	if s.EmailRepository != nil {
-		inactive := "inactive"
-		if _, xerr := s.EmailRepository.Update(ctx, event.UserID, event.EmailAccountID, &models.UpdateEmail{
-			Status: &inactive,
-		}); xerr != nil {
-			log.Error().Str("error", xerr.Message).Msg("Failed to update email account status")
-		}
-	}
-
-	if s.WarmupService != nil {
-		health, _ := s.WarmupService.ApplyRateLimitExceeded(ctx, emailAccountID, "worker sync/email rate limit exceeded")
-		s.markRiskBandFromWarmupHealth(ctx, emailAccountID, health)
-	}
+	// Gmail's user-rate response is a temporary provider cooldown, not proof of
+	// abuse. Keep the mailbox active and let the scheduler's task-failure
+	// cooldown skip it briefly; disabling it or blocking warmup for 30 days makes
+	// a transient 429 effectively permanent.
 
 	// Send Pub/Sub notification to user (this is a warning notification)
 	if s.StreamingPublisher != nil && event.UserVisible {

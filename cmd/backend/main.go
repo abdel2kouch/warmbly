@@ -1238,7 +1238,10 @@ func main() {
 		// task chain died (a swallowed enqueue, a worker bounce mid-tick, or a
 		// crash between send and enqueue). Campaigns have no other bootstrap once
 		// started, so without this a stranded campaign stops sending forever.
-		go tasksService.StartCampaignReconciler(ctx, 5*time.Minute)
+		// Worker-confirmed campaign delivery intentionally leaves a chain without
+		// a successor until the worker result is committed. Reconcile frequently so
+		// the next safely-spaced task is scheduled promptly after that result.
+		go tasksService.StartCampaignReconciler(ctx, 5*time.Second)
 
 		// Worker reconciler: assign + (re)load every active mailbox onto its
 		// worker. Workers hold accounts in memory only, so this is what makes a

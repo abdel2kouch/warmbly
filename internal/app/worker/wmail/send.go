@@ -113,6 +113,15 @@ func (w *WMail) Send(ctx context.Context, req *SendRequest) *SendResult {
 		if result.Error != nil && result.Error.Type == errx.MailErrorCritical {
 			return result
 		}
+		// Provider quota responses normally include a cooldown measured in
+		// minutes. Retrying after 1/2/4 seconds only burns more quota; let the
+		// campaign scheduler try another sender and revisit this mailbox later.
+		if result.Error != nil {
+			switch result.Error.Code {
+			case errx.MailErrorCodeRateLimitExceeded, errx.MailErrorCodeQuotaExceeded, errx.MailErrorCodeSendingTooFast:
+				return result
+			}
+		}
 
 		if attempt < maxSendRetries {
 			backoff := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s

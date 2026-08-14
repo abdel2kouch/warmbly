@@ -1411,7 +1411,7 @@ func (r *campaignRepository) GetPendingCampaignTasks(ctx context.Context, campai
 	return tasks, rows.Err()
 }
 
-// ListCampaignScheduleCandidates returns active campaigns with no pending task,
+// ListCampaignScheduleCandidates returns active campaigns with no in-flight task,
 // i.e. chains that stalled (a swallowed enqueue or a crash between ticks left no
 // successor). The reconciler re-seeds each. createCampaignTask's advisory lock
 // makes a concurrent real-tick enqueue safe (one wins, the other no-ops).
@@ -1424,7 +1424,7 @@ func (r *campaignRepository) ListCampaignScheduleCandidates(ctx context.Context,
 		    SELECT 1
 		    FROM campaign_tasks ct
 		    JOIN tasks t ON t.id = ct.task_id
-		    WHERE ct.campaign_id = c.id AND t.status = 'pending'
+		    WHERE ct.campaign_id = c.id AND t.status IN ('pending', 'active')
 		  )
 		LIMIT $1`
 

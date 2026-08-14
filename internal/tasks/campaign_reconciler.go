@@ -20,6 +20,7 @@ const campaignReconcileBatch = 500
 // Tasks fires within seconds of the scheduled time, so 15 minutes is far
 // outside any legitimate delivery or retry window.
 const overduePendingGrace = 15 * time.Minute
+const activeDeliveryResultGrace = 10 * time.Minute
 
 // ReconcileCampaignSchedules re-seeds the wakeup chain for active campaigns that
 // have no pending task. A campaign chain is self-perpetuating (each tick
@@ -29,6 +30,18 @@ const overduePendingGrace = 15 * time.Minute
 // is the backstop that keeps them from silently stalling. Returns the number of
 // chains re-seeded this pass.
 func (s *tasksService) ReconcileCampaignSchedules(ctx context.Context, limit int) (int, error) {
+	// A provider call returns synchronously and the worker emits its result
+	// immediately. Release any active task whose result was lost so one dropped
+	// event cannot strand the entire campaign forever.
+	type staleActiveReaper interface {
+		FailStaleActiveCampaignTasks(context.Context, time.Duration) (int64, error)
+	}
+	if reaper, ok := s.taskRepo.(staleActiveReaper); ok {
+		if n, err := reaper.FailStaleActiveCampaignTasks(ctx, activeDeliveryResultGrace); err == nil && n > 0 {
+			log.Warn().Int64("failed", n).Msg("campaign reconcile: released stale active delivery tasks")
+		}
+	}
+
 	// A pending task stranded well past its slot means the Cloud Tasks
 	// callback was lost (queue wipe, emulator restart, dropped retry). It
 	// blocks the "no pending task" candidate check below forever, so cancel
