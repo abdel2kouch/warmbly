@@ -41,6 +41,9 @@ type UniboxRepository interface {
 	Delete(ctx context.Context, userID, id uuid.UUID) error
 	DeleteThreadForOrg(ctx context.Context, orgID uuid.UUID, threadID string) error
 	ThreadActionTargets(ctx context.Context, orgID uuid.UUID, threadID string) ([]UniboxThreadActionTarget, error)
+	PreviewMailboxCleanup(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID) (*models.MailboxCleanupPreview, error)
+	MailboxCleanupTargets(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID) ([]UniboxMailboxCleanupTarget, error)
+	DeleteMailboxCleanupCache(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID) error
 
 	// Snooze: per (user, thread). UpsertSnooze adopts the new
 	// snoozed_until even if one already exists; DeleteSnooze removes
@@ -71,6 +74,14 @@ type UniboxRepository interface {
 // UniboxThreadActionTarget is the provider identity needed to mutate one
 // message while ensuring it belongs to the selected organization.
 type UniboxThreadActionTarget struct {
+	EmailID uuid.UUID
+	GmailID string
+}
+
+// UniboxMailboxCleanupTarget is a Gmail message selected for a confirmed,
+// scoped cleanup. Protected campaign-reply conversations are excluded by the
+// repository query before a target is ever returned.
+type UniboxMailboxCleanupTarget struct {
 	EmailID uuid.UUID
 	GmailID string
 }
@@ -676,6 +687,116 @@ func (r *uniboxRepository) ThreadActionTargets(ctx context.Context, orgID uuid.U
 		targets = append(targets, target)
 	}
 	return targets, rows.Err()
+}
+
+// mailboxCleanupCTE protects a full conversation once a contacted campaign
+// lead has replied anywhere in it. It is intentionally more conservative than
+// the campaign-replies list filter, which only evaluates a thread's newest
+// representative message.
+const mailboxCleanupCTE = `
+	WITH selected_mailboxes AS (
+		SELECT id FROM email_accounts
+		WHERE organization_id = $1 AND id = ANY($2)
+	),
+	contacted_leads AS MATERIALIZED (
+		SELECT DISTINCT lower(contact.email) AS email
+		FROM tasks task
+		JOIN campaign_tasks campaign_task ON campaign_task.task_id = task.id
+		JOIN contacts contact ON contact.id = campaign_task.contact_id
+		WHERE task.email_account_id IN (SELECT id FROM selected_mailboxes)
+		  AND task.task_type = 'campaign'
+		  AND task.status = 'completed'
+	),
+	protected_threads AS MATERIALIZED (
+		SELECT DISTINCT ue.email_id, ue.thread_id
+		FROM unibox_emails ue
+		WHERE ue.email_id IN (SELECT id FROM selected_mailboxes)
+		  AND ue.thread_id <> ''
+		  AND EXISTS (
+			SELECT 1
+			FROM unnest(ue.from_addr) AS sender(addr)
+			JOIN contacted_leads lead
+			  ON lead.email = lower(COALESCE(substring(sender.addr FROM '<([^>]+)>'), trim(sender.addr)))
+		  )
+	)
+`
+
+// PreviewMailboxCleanup returns counts only; it never changes a mailbox.
+func (r *uniboxRepository) PreviewMailboxCleanup(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID) (*models.MailboxCleanupPreview, error) {
+	if len(emailIDs) == 0 {
+		return &models.MailboxCleanupPreview{}, nil
+	}
+	query := mailboxCleanupCTE + `
+	SELECT
+		(SELECT count(*) FROM selected_mailboxes),
+		count(ue.id) FILTER (WHERE ue.gmail_id <> '' AND protected.thread_id IS NULL),
+		(SELECT count(*) FROM protected_threads),
+		count(ue.id) FILTER (WHERE protected.thread_id IS NOT NULL)
+	FROM unibox_emails ue
+	LEFT JOIN protected_threads protected
+	  ON protected.email_id = ue.email_id AND protected.thread_id = ue.thread_id
+	WHERE ue.email_id IN (SELECT id FROM selected_mailboxes)`
+
+	preview := &models.MailboxCleanupPreview{}
+	if err := r.db.QueryRow(ctx, query, orgID, emailIDs).Scan(
+		&preview.SelectedMailboxes,
+		&preview.MessagesToTrash,
+		&preview.PreservedThreads,
+		&preview.PreservedMessages,
+	); err != nil {
+		return nil, err
+	}
+	return preview, nil
+}
+
+// MailboxCleanupTargets returns only Gmail-backed messages outside protected
+// campaign-lead reply threads.
+func (r *uniboxRepository) MailboxCleanupTargets(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID) ([]UniboxMailboxCleanupTarget, error) {
+	if len(emailIDs) == 0 {
+		return []UniboxMailboxCleanupTarget{}, nil
+	}
+	query := mailboxCleanupCTE + `
+	SELECT ue.email_id, ue.gmail_id
+	FROM unibox_emails ue
+	LEFT JOIN protected_threads protected
+	  ON protected.email_id = ue.email_id AND protected.thread_id = ue.thread_id
+	WHERE ue.email_id IN (SELECT id FROM selected_mailboxes)
+	  AND ue.gmail_id <> ''
+	  AND protected.thread_id IS NULL`
+	rows, err := r.db.Query(ctx, query, orgID, emailIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	targets := make([]UniboxMailboxCleanupTarget, 0)
+	for rows.Next() {
+		var target UniboxMailboxCleanupTarget
+		if err := rows.Scan(&target.EmailID, &target.GmailID); err != nil {
+			return nil, err
+		}
+		targets = append(targets, target)
+	}
+	return targets, rows.Err()
+}
+
+// DeleteMailboxCleanupCache removes only the rows which were queued for Trash.
+// Protected lead-reply conversations remain visible locally and Gmail sync will
+// reconcile the rest after the provider operation completes.
+func (r *uniboxRepository) DeleteMailboxCleanupCache(ctx context.Context, orgID uuid.UUID, emailIDs []uuid.UUID) error {
+	if len(emailIDs) == 0 {
+		return nil
+	}
+	query := mailboxCleanupCTE + `
+	DELETE FROM unibox_emails ue
+	WHERE ue.email_id IN (SELECT id FROM selected_mailboxes)
+	  AND ue.gmail_id <> ''
+	  AND NOT EXISTS (
+		SELECT 1 FROM protected_threads protected
+		WHERE protected.email_id = ue.email_id AND protected.thread_id = ue.thread_id
+	)`
+	_, err := r.db.Exec(ctx, query, orgID, emailIDs)
+	return err
 }
 
 // queryPreviewList executes a query returning preview rows with limit+1 pagination.

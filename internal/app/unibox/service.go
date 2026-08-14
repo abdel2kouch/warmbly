@@ -43,6 +43,8 @@ type UniboxService interface {
 	MarkSeen(ctx context.Context, userID, emailID uuid.UUID, seen bool) *errx.Error
 	MarkSeenBulk(ctx context.Context, orgID uuid.UUID, data *models.MarkSeen) (*models.MarkSeen, *errx.Error)
 	ThreadAction(ctx context.Context, orgID uuid.UUID, threadID, action string) *errx.Error
+	PreviewMailboxCleanup(ctx context.Context, orgID uuid.UUID, mailboxIDs []uuid.UUID) (*models.MailboxCleanupPreview, *errx.Error)
+	CleanupMailboxes(ctx context.Context, orgID uuid.UUID, mailboxIDs []uuid.UUID) (*models.MailboxCleanupResult, *errx.Error)
 
 	// Snooze hides a thread until `until`. Unsnooze drops the row.
 	Snooze(ctx context.Context, userID uuid.UUID, threadID string, until time.Time) (*models.UniboxSnooze, *errx.Error)

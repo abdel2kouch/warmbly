@@ -32,6 +32,7 @@ type Publisher interface {
 
 	// Warmup action events
 	PublishWarmupAction(ctx context.Context, workerID uuid.UUID, action *models.WarmupEmailAction) error
+	PublishMailboxCleanup(ctx context.Context, workerID uuid.UUID, action *models.MailboxCleanupAction) error
 
 	// Worker change notifications
 	PublishAddEmail(ctx context.Context, workerID uuid.UUID, email *models.AddWorkerEmail) error
@@ -258,6 +259,16 @@ func (p *publisher) PublishWarmupAction(ctx context.Context, workerID uuid.UUID,
 
 	workerTopic := kafka.GetWorkerTopic(workerID.String())
 	return p.publish(workerTopic, action.EmailID.String(), workerEvent)
+}
+
+// PublishMailboxCleanup asks one mailbox worker to move a bounded batch of
+// Gmail messages to Trash. It deliberately does not reuse warmup events.
+func (p *publisher) PublishMailboxCleanup(ctx context.Context, workerID uuid.UUID, action *models.MailboxCleanupAction) error {
+	workerEvent := models.WorkerEvent{
+		Type: models.WorkerEventTypeMailboxCleanup,
+		Body: action,
+	}
+	return p.publish(kafka.GetWorkerTopic(workerID.String()), action.EmailID.String(), workerEvent)
 }
 
 // PublishAddEmail publishes an add email event to the worker

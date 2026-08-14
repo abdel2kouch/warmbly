@@ -88,6 +88,29 @@ func (c *Client) Trash(ctx context.Context, messageID string) error {
 	return nil
 }
 
+// TrashMessages moves a batch of messages to Gmail Trash. This is reversible
+// through Gmail's normal Trash retention and is never a permanent delete.
+// Gmail's BatchModify endpoint permits a maximum of 1,000 IDs per request.
+func (c *Client) TrashMessages(ctx context.Context, messageIDs []string) error {
+	if c.srv == nil {
+		return fmt.Errorf("gmail service not initialized")
+	}
+	for start := 0; start < len(messageIDs); start += 1000 {
+		end := start + 1000
+		if end > len(messageIDs) {
+			end = len(messageIDs)
+		}
+		if err := c.srv.Users.Messages.BatchModify("me", &gmail.BatchModifyMessagesRequest{
+			Ids:            messageIDs[start:end],
+			AddLabelIds:    []string{"TRASH"},
+			RemoveLabelIds: []string{Inbox},
+		}).Context(ctx).Do(); err != nil {
+			return fmt.Errorf("failed to move messages to trash: %w", err)
+		}
+	}
+	return nil
+}
+
 // RemoveFromSpam removes a message from the SPAM label
 func (c *Client) RemoveFromSpam(ctx context.Context, messageID string) error {
 	if c.srv == nil {

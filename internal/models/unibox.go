@@ -227,6 +227,33 @@ type UniboxMailboxOverview struct {
 	Total  int64     `json:"total"`
 }
 
+// MailboxCleanupPreview is the safe, read-only estimate displayed before a
+// user moves messages to Gmail Trash. Protected counts cover every message in
+// a conversation where a successfully contacted campaign lead has replied.
+type MailboxCleanupPreview struct {
+	SelectedMailboxes    int   `json:"selected_mailboxes"`
+	MessagesToTrash      int64 `json:"messages_to_trash"`
+	PreservedThreads     int64 `json:"preserved_threads"`
+	PreservedMessages    int64 `json:"preserved_messages"`
+	UnsupportedMailboxes int   `json:"unsupported_mailboxes"`
+}
+
+// MailboxCleanupResult reports the provider operations queued after an
+// explicit confirmation. Gmail applies those operations asynchronously.
+type MailboxCleanupResult struct {
+	SelectedMailboxes int   `json:"selected_mailboxes"`
+	QueuedForTrash    int64 `json:"queued_for_trash"`
+	PreservedThreads  int64 `json:"preserved_threads"`
+	PreservedMessages int64 `json:"preserved_messages"`
+}
+
+// MailboxCleanupAction is sent to the mailbox's worker. Gmail BatchModify
+// accepts at most 1,000 message IDs, so the app emits one event per chunk.
+type MailboxCleanupAction struct {
+	EmailID  uuid.UUID `json:"email_id"`
+	GmailIDs []string  `json:"gmail_ids"`
+}
+
 // UniboxTagOverview gives the rail per-tag counts; resolved by joining
 // emails through the mailboxes that carry the tag.
 type UniboxTagOverview struct {

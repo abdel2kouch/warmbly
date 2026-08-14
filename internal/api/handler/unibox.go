@@ -411,6 +411,72 @@ func (h *Handler) UniboxThreadAction(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+type UniboxMailboxCleanupPreviewRequest struct {
+	EmailAccountIDs []uuid.UUID `json:"email_account_ids" binding:"required,min=1,max=100"`
+}
+
+type UniboxMailboxCleanupRequest struct {
+	EmailAccountIDs []uuid.UUID `json:"email_account_ids" binding:"required,min=1,max=100"`
+	// Confirm is deliberately required on the mutation endpoint. Preview is a
+	// separate safe endpoint so a browser cannot accidentally trash mail.
+	Confirm bool `json:"confirm" binding:"required"`
+}
+
+// PreviewUniboxMailboxCleanup reports the effect of a cleanup without changing
+// Gmail or the local inbox cache.
+func (h *Handler) PreviewUniboxMailboxCleanup(c *gin.Context) {
+	if !h.gateUnibox(c) {
+		return
+	}
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
+		return
+	}
+	var req UniboxMailboxCleanupPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errx.Handle(c, errx.ErrInvalid)
+		return
+	}
+	preview, xerr := h.UniboxService.PreviewMailboxCleanup(c.Request.Context(), *orgID, req.EmailAccountIDs)
+	if xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": preview})
+}
+
+// RunUniboxMailboxCleanup queues a reviewed cleanup. Gmail moves the selected
+// messages to Trash; it does not permanently delete them.
+func (h *Handler) RunUniboxMailboxCleanup(c *gin.Context) {
+	if !h.gateUnibox(c) {
+		return
+	}
+	orgID := middleware.GetOrganizationID(c)
+	if orgID == nil {
+		errx.Handle(c, errx.New(errx.BadRequest, "no organization selected"))
+		return
+	}
+	var req UniboxMailboxCleanupRequest
+	if err := c.ShouldBindJSON(&req); err != nil || !req.Confirm {
+		errx.Handle(c, errx.ErrInvalid)
+		return
+	}
+	result, xerr := h.UniboxService.CleanupMailboxes(c.Request.Context(), *orgID, req.EmailAccountIDs)
+	if xerr != nil {
+		errx.Handle(c, xerr)
+		return
+	}
+	h.auditOrg(c, models.AuditActionUpdate, models.AuditEntityUnibox, nil, nil, map[string]string{
+		"action":             "mailbox_cleanup",
+		"mailboxes":          strconv.Itoa(result.SelectedMailboxes),
+		"queued_for_trash":   strconv.FormatInt(result.QueuedForTrash, 10),
+		"preserved_threads":  strconv.FormatInt(result.PreservedThreads, 10),
+		"preserved_messages": strconv.FormatInt(result.PreservedMessages, 10),
+	})
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
 // GetUnseenCount gets the count of unseen emails
 // GET /unibox/count
 func (h *Handler) GetUnseenCount(c *gin.Context) {

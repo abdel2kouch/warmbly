@@ -8,12 +8,14 @@
 // pill always sits on the left edge so it stays reachable even when
 // the rest of the strip scrolls horizontally.
 
-import { LayoutGridIcon, PenLineIcon, XIcon } from "lucide-react";
+import React from "react";
+import { LayoutGridIcon, PenLineIcon, Trash2Icon, XIcon } from "lucide-react";
 import useUniboxOverview from "@/lib/api/hooks/app/unibox/useUniboxOverview";
 import AnimatedNumber from "@/components/ui/AnimatedNumber";
 import ShortcutTooltip from "@/components/ui/shortcut-tooltip";
 import { useComposeStore } from "@/hooks/useComposeStore";
 import { cn } from "@/lib/utils";
+import { MailboxCleanupDialog } from "./MailboxCleanupDialog";
 
 interface UniboxHeaderProps {
     scopeLabel: string;
@@ -28,6 +30,7 @@ export function UniboxHeader({
 }: UniboxHeaderProps) {
     const overview = useUniboxOverview();
     const data = overview.data;
+    const [cleanupOpen, setCleanupOpen] = React.useState(false);
 
     return (
         <header className="h-10 px-3 sm:px-4 border-b border-slate-200 bg-white flex items-center gap-2 sm:gap-3 shrink-0 overflow-x-auto">
@@ -93,6 +96,14 @@ export function UniboxHeader({
                     </span>
                     live
                 </span>
+                <button
+                    type="button"
+                    onClick={() => setCleanupOpen(true)}
+                    className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-slate-200 text-slate-600 hover:text-red-700 hover:border-red-200 hover:bg-red-50 text-[11px] font-medium transition-colors"
+                >
+                    <Trash2Icon className="w-3 h-3" />
+                    <span className="hidden sm:inline">Clean mailboxes</span>
+                </button>
                 {/* Desktop gets the rail's Compose button; this is the
                     phone/tablet entry where the rail is hidden. */}
                 <ShortcutTooltip label="New email" combo="n">
@@ -106,6 +117,11 @@ export function UniboxHeader({
                     </button>
                 </ShortcutTooltip>
             </div>
+            <MailboxCleanupDialog
+                open={cleanupOpen}
+                onOpenChange={setCleanupOpen}
+                mailboxes={data?.mailboxes ?? []}
+            />
         </header>
     );
 }

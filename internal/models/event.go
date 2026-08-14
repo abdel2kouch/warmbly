@@ -8,6 +8,10 @@ const (
 	WorkerEventTypeRemoveEmail     WorkerEventType = "REMOVE_EMAIL"
 	WorkerEventTypeEmailValidation WorkerEventType = "EMAIL_VALIDATION"
 	WorkerEventTypeWarmupAction    WorkerEventType = "WARMUP_ACTION"
+	// WorkerEventTypeMailboxCleanup batches a Gmail Trash operation for a
+	// mailbox. It is intentionally distinct from warmup actions so a user
+	// initiated inbox cleanup cannot be confused with automated warmup work.
+	WorkerEventTypeMailboxCleanup WorkerEventType = "MAILBOX_CLEANUP"
 )
 
 type WorkerEvent struct {
