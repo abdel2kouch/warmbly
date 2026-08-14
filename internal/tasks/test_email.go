@@ -15,7 +15,7 @@ func (s *tasksService) GetCampaignSequences(ctx context.Context, campaignID uuid
 }
 
 // SendTestEmail renders a campaign email and sends it to a test recipient for preview
-func (s *tasksService) SendTestEmail(ctx context.Context, userID string, accountID uuid.UUID, recipient string, campaign *models.Campaign, sequence *models.Sequence) *errx.Error {
+func (s *tasksService) SendTestEmail(ctx context.Context, userID string, accountID uuid.UUID, recipient string, _ *models.Campaign, sequence *models.Sequence) *errx.Error {
 	// Load the email account
 	account, err := s.emailRepo.GetByID(ctx, accountID)
 	if err != nil || account == nil {
@@ -73,19 +73,9 @@ func (s *tasksService) SendTestEmail(ctx context.Context, userID string, account
 		return errx.New(errx.Internal, fmt.Sprintf("failed to send test email: %v", err))
 	}
 
-	// A test send made to a contact already in the campaign is still an
-	// outbound message from that campaign.  Record it after provider success so
-	// the campaign and workspace dashboards do not silently under-report these
-	// sends.  Previewing to an arbitrary external address remains side-effect
-	// free because no matching workspace contact exists.
-	if campaign.OrganizationID != nil {
-		contact, xerr := s.contactRepo.GetByEmailAndOrganization(ctx, *campaign.OrganizationID, recipient)
-		if xerr == nil && contact != nil {
-			if err := s.campaignProgressRepo.RecordEmailSent(ctx, campaign.ID, contact.ID, sequence.ID); err != nil {
-				return errx.New(errx.Internal, fmt.Sprintf("sent test email but failed to record analytics: %v", err))
-			}
-		}
-	}
+	// Test/preview sends are intentionally excluded from campaign analytics.
+	// Only a persisted campaign task may advance lead progress, daily limits, or
+	// sender rotation after a provider-confirmed worker result.
 
 	return nil
 }
