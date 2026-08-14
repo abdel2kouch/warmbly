@@ -55,7 +55,10 @@ func (c *Client) sendRawWithAttachments(
 	hdrs = append(hdrs,
 		header{"From", c.GetAddress()},
 		header{"To", strings.Join(to, ", ")},
-		header{"Subject", subject},
+		// RFC 5322 headers are ASCII-only. Writing UTF-8 bytes directly makes
+		// clients decode curly quotes/emoji as Latin-1 (Ã¢Â€Â™ / Ã°ÂŸÂ˜Â˜). RFC 2047
+		// encoded-words preserve non-ASCII subjects across Gmail and relays.
+		header{"Subject", mime.QEncoding.Encode("UTF-8", subject)},
 		header{"Message-ID", messageID},
 		header{"MIME-Version", "1.0"},
 	)

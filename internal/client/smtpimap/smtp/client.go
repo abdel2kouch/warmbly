@@ -60,9 +60,11 @@ func (c *Client) Send(
 
 	// ----- Headers -----
 	headers := map[string]string{
-		"From":         from.String(),
-		"To":           strings.Join(to, ", "),
-		"Subject":      subject,
+		"From": from.String(),
+		"To":   strings.Join(to, ", "),
+		// RFC 2047 is required for non-ASCII text in a message header. Body
+		// charset declarations do not apply to Subject.
+		"Subject":      mime.QEncoding.Encode("UTF-8", subject),
 		"Date":         time.Now().Format(time.RFC1123Z),
 		"MIME-Version": "1.0",
 	}

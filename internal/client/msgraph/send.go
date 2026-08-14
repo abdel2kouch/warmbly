@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 
@@ -34,7 +35,7 @@ func (c *Client) SendMessage(
 	hdrs := []hdr{
 		{"From", c.GetAddress()},
 		{"To", strings.Join(to, ", ")},
-		{"Subject", subject},
+		{"Subject", mime.QEncoding.Encode("UTF-8", subject)},
 		{"Message-ID", messageID},
 		{"MIME-Version", "1.0"},
 	}
