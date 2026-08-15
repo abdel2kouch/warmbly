@@ -419,17 +419,60 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 		candidateTime = candidateTime.Add(24 * time.Hour)
 		candidateTime = nextScheduleSlot(candidateTime, windows, campaignTZ)
 
+		// Rebuild from the complete resolved pool, rather than today's
+		// candidates. Accounts that hit their daily cap are deliberately absent
+		// from candidates, but are exactly the accounts that regain capacity on
+		// the next day. Reusing candidates here turned an at-cap pool into the
+		// misleading ErrNoEmailAccounts launch failure.
 		var tomorrow []AccountCandidate
-		for i := range candidates {
-			acct := candidates[i].Account
-			// ESP-strict: keep only matching mailboxes for tomorrow too.
-			if campaign.ESPMatchMode == "strict" && recipientProvider != "" && !candidates[i].ProviderMatch {
+		for _, acct := range accounts {
+			remaining := effectiveCap(acct)
+			if remaining <= 0 {
 				continue
 			}
-			acctLimit := effectiveCap(acct) // same ramp clamp as STEP 8
-			c := candidates[i]
-			c.RemainingToday = acctLimit
-			c.Weight = computeWeight(acctLimit, candidates[i].WarmupAgeDays)
+
+			if state, blockedUntil, herr := s.warmupRepo.GetHealthState(ctx, acct.ID); herr == nil {
+				switch state {
+				case models.WarmupHealthQuarantined, models.WarmupHealthBlocked:
+					if blockedUntil == nil || blockedUntil.After(candidateTime) {
+						continue
+					}
+				case models.WarmupHealthWatch, models.WarmupHealthThrottled:
+					remaining = int(float64(remaining) * adjustmentFor(state).volumeMultiplier)
+					if remaining <= 0 {
+						continue
+					}
+				}
+			}
+
+			if acct.Timezone != "" && acct.Timezone != campaign.Timezone {
+				acctHour := candidateTime.In(loadLocation(acct.Timezone)).Hour()
+				if acctHour < 8 || acctHour >= 20 {
+					continue
+				}
+			}
+
+			warmupAgeDays := 0
+			if acct.Warmup != nil {
+				warmupAgeDays = int(time.Since(*acct.Warmup).Hours() / 24)
+			}
+			c := AccountCandidate{
+				Account:        acct,
+				RemainingToday: remaining,
+				WarmupAgeDays:  warmupAgeDays,
+				Weight:         computeWeight(remaining, warmupAgeDays),
+				ProviderMatch:  providerMatches(acct.Provider),
+			}
+			if meta, ok := senderMetaByID[acct.ID]; ok {
+				c.HasSenderMetadata = true
+				c.SenderWeight = meta.weight
+				c.RotationPosition = meta.rotationPosition
+				c.SenderLastSentAt = meta.lastSentAt
+			}
+			// ESP-strict: keep only matching mailboxes for tomorrow too.
+			if campaign.ESPMatchMode == "strict" && recipientProvider != "" && !c.ProviderMatch {
+				continue
+			}
 			tomorrow = append(tomorrow, c)
 		}
 		// ESP-prefer: restrict tomorrow to matching mailboxes when any exist.
