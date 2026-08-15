@@ -499,7 +499,19 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 				// Deferral, not a send (see above).
 				return s.deferToNextDay(campaign), nil, accounts[0].ID, ErrCampaignDeferred
 			}
-			return time.Time{}, nil, uuid.Nil, ErrNoEmailAccounts
+			// The pool was resolved above, so this is not a missing-mailbox
+			// condition. It means every configured sender is temporarily
+			// unavailable after applying its cap, health, timezone, or ramp
+			// checks. Keep the campaign active and retry at the next valid
+			// campaign day instead of incorrectly pausing it as "no accounts".
+			s.logCampaignDecision(ctx, campaignID, "sender_pool_deferred",
+				"Configured campaign senders are temporarily unavailable; retrying next campaign day",
+				map[string]interface{}{
+					"resolved_accounts":   len(accounts),
+					"today_candidates":    len(candidates),
+					"tomorrow_candidates": len(tomorrow),
+				})
+			return s.deferToNextDay(campaign), nil, accounts[0].ID, ErrCampaignDeferred
 		}
 	}
 
