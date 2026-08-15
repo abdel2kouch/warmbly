@@ -56,6 +56,39 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 	if serr != nil {
 		return time.Time{}, nil, uuid.Nil, serr
 	}
+	// Be resilient to a stale/mismatched join result during a launch. The
+	// campaign_senders table is the explicit source of truth; if its active
+	// join unexpectedly returns no mailboxes, rebuild the pool from those saved
+	// IDs and verify each account directly. This prevents a healthy explicit
+	// pool being incorrectly treated as an empty legacy tag selection.
+	if len(senders) == 0 {
+		configured, cerr := s.campaignRepo.GetCampaignSenders(ctx, campaignID)
+		if cerr != nil {
+			return time.Time{}, nil, uuid.Nil, cerr
+		}
+		for _, configuredSender := range configured {
+			if !configuredSender.Enabled {
+				continue
+			}
+			account, aerr := s.emailRepo.GetByID(ctx, configuredSender.EmailAccountID)
+			if aerr != nil {
+				return time.Time{}, nil, uuid.Nil, aerr
+			}
+			if account == nil || account.Status != "active" {
+				continue
+			}
+			senders = append(senders, repository.CampaignSenderAccount{
+				Account:    *account,
+				Weight:     configuredSender.Weight,
+				LastSentAt: configuredSender.LastSentAt,
+			})
+		}
+		if len(senders) > 0 {
+			s.logCampaignDecision(ctx, campaignID, "sender_pool_recovered",
+				"Recovered active explicit senders after a launch-time sender lookup returned none",
+				map[string]interface{}{"recovered_senders": len(senders)})
+		}
+	}
 	for _, snd := range senders {
 		accounts = append(accounts, snd.Account)
 		seen[snd.Account.ID] = true
