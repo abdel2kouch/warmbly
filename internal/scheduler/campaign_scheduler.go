@@ -283,8 +283,10 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 		return acctProvider == recipientProvider
 	}
 
-	// STEP 8: Build weighted account candidates
-	// Skip accounts whose local time falls outside business hours (8am-8pm)
+	// STEP 8: Build weighted account candidates. The campaign's explicit
+	// per-day windows and campaign timezone are authoritative. A mailbox's own
+	// timezone is profile metadata (and is used by warmup); it must not impose a
+	// hidden 08:00-20:00 restriction on a campaign configured for 24/7 sending.
 	var candidates []AccountCandidate
 	var earliestCooldown *time.Time
 	var cooldownAccountID uuid.UUID
@@ -348,17 +350,6 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 					todayExclusions["health_throttle"]++
 					continue
 				}
-			}
-		}
-
-		// If the account has its own timezone, check it is within business hours
-		if acct.Timezone != "" && acct.Timezone != campaign.Timezone {
-			acctTZ := loadLocation(acct.Timezone)
-			acctLocal := candidateTime.In(acctTZ)
-			acctHour := acctLocal.Hour()
-			if acctHour < 8 || acctHour >= 20 {
-				todayExclusions["account_timezone"]++
-				continue // outside account's business hours
 			}
 		}
 
@@ -456,14 +447,6 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 						tomorrowExclusions["health_throttle"]++
 						continue
 					}
-				}
-			}
-
-			if acct.Timezone != "" && acct.Timezone != campaign.Timezone {
-				acctHour := candidateTime.In(loadLocation(acct.Timezone)).Hour()
-				if acctHour < 8 || acctHour >= 20 {
-					tomorrowExclusions["account_timezone"]++
-					continue
 				}
 			}
 
