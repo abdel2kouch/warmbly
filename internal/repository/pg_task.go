@@ -390,15 +390,23 @@ func (r *taskRepository) GetEmailTask(ctx context.Context, taskID uuid.UUID) (*E
 	return emailTask, err
 }
 
-// CountCampaignEmailsSentToday counts only campaign tasks completed today (excludes warmup)
+// CountCampaignEmailsSentToday counts provider-confirmed campaign deliveries
+// today. A campaign task can also be a control-plane wakeup (defer, wait/action
+// node, reconciliation tick). Those tasks are completed without sending and
+// must never consume mailbox delivery capacity.
 func (r *taskRepository) CountCampaignEmailsSentToday(ctx context.Context, accountID uuid.UUID) (int, error) {
 	query := `
 		SELECT COUNT(*)
-		FROM tasks
-		WHERE email_account_id = $1
-		  AND status = 'completed'
-		  AND task_type = 'campaign'
-		  AND DATE(completed_at) = CURRENT_DATE
+		FROM tasks t
+		JOIN campaign_tasks ct ON ct.task_id = t.id
+		WHERE t.email_account_id = $1
+		  AND t.status = 'completed'
+		  AND t.task_type = 'campaign'
+		  AND t.completed_at >= date_trunc('day', NOW())
+		  AND t.completed_at < date_trunc('day', NOW()) + INTERVAL '1 day'
+		  AND NULLIF(t.message_id, '') IS NOT NULL
+		  AND ct.contact_id IS NOT NULL
+		  AND ct.sequence_id IS NOT NULL
 	`
 
 	var count int

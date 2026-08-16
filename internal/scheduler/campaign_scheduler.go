@@ -288,6 +288,7 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 	var candidates []AccountCandidate
 	var earliestCooldown *time.Time
 	var cooldownAccountID uuid.UUID
+	todayExclusions := map[string]int{}
 	type campaignCooldownReader interface {
 		GetCampaignAccountCooldownUntil(context.Context, uuid.UUID) (*time.Time, error)
 	}
@@ -302,6 +303,11 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 
 		// Skip accounts that have reached their daily limit
 		if remaining <= 0 {
+			if acctLimit <= 0 {
+				todayExclusions["zero_limit"]++
+			} else {
+				todayExclusions["daily_cap"]++
+			}
 			continue
 		}
 
@@ -311,6 +317,7 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 				return time.Time{}, nil, uuid.Nil, cerr
 			}
 			if until != nil && until.After(time.Now()) {
+				todayExclusions["cooldown"]++
 				if earliestCooldown == nil || until.Before(*earliestCooldown) {
 					t := *until
 					earliestCooldown, cooldownAccountID = &t, acct.ID
@@ -332,11 +339,13 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 			switch state {
 			case models.WarmupHealthQuarantined, models.WarmupHealthBlocked:
 				if blockedUntil == nil || blockedUntil.After(time.Now()) {
+					todayExclusions["health_block"]++
 					continue
 				}
 			case models.WarmupHealthWatch, models.WarmupHealthThrottled:
 				remaining = int(float64(remaining) * adjustmentFor(state).volumeMultiplier)
 				if remaining <= 0 {
+					todayExclusions["health_throttle"]++
 					continue
 				}
 			}
@@ -348,6 +357,7 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 			acctLocal := candidateTime.In(acctTZ)
 			acctHour := acctLocal.Hour()
 			if acctHour < 8 || acctHour >= 20 {
+				todayExclusions["account_timezone"]++
 				continue // outside account's business hours
 			}
 		}
@@ -425,9 +435,11 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 		// the next day. Reusing candidates here turned an at-cap pool into the
 		// misleading ErrNoEmailAccounts launch failure.
 		var tomorrow []AccountCandidate
+		tomorrowExclusions := map[string]int{}
 		for _, acct := range accounts {
 			remaining := effectiveCap(acct)
 			if remaining <= 0 {
+				tomorrowExclusions["zero_limit"]++
 				continue
 			}
 
@@ -435,11 +447,13 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 				switch state {
 				case models.WarmupHealthQuarantined, models.WarmupHealthBlocked:
 					if blockedUntil == nil || blockedUntil.After(candidateTime) {
+						tomorrowExclusions["health_block"]++
 						continue
 					}
 				case models.WarmupHealthWatch, models.WarmupHealthThrottled:
 					remaining = int(float64(remaining) * adjustmentFor(state).volumeMultiplier)
 					if remaining <= 0 {
+						tomorrowExclusions["health_throttle"]++
 						continue
 					}
 				}
@@ -448,6 +462,7 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 			if acct.Timezone != "" && acct.Timezone != campaign.Timezone {
 				acctHour := candidateTime.In(loadLocation(acct.Timezone)).Hour()
 				if acctHour < 8 || acctHour >= 20 {
+					tomorrowExclusions["account_timezone"]++
 					continue
 				}
 			}
@@ -510,6 +525,8 @@ func (s *schedulerService) CalculateNextCampaignTime(ctx context.Context, campai
 					"resolved_accounts":   len(accounts),
 					"today_candidates":    len(candidates),
 					"tomorrow_candidates": len(tomorrow),
+					"today_exclusions":    todayExclusions,
+					"tomorrow_exclusions": tomorrowExclusions,
 				})
 			return s.deferToNextDay(campaign), nil, accounts[0].ID, ErrCampaignDeferred
 		}

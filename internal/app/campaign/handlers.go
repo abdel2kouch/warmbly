@@ -249,6 +249,7 @@ func (s *campaignService) enqueueCampaignWakeup(ctx context.Context, campaignID 
 	}
 
 	nextTime, _, accountID, err := s.scheduler.CalculateNextCampaignTime(ctx, campaignID)
+	deferred := errors.Is(err, scheduler.ErrCampaignDeferred)
 	// A deferral still yields a usable first-send slot (nextTime) and a nominal
 	// pool mailbox (accountID), so fall through and schedule the first wakeup at
 	// the defer time rather than failing the campaign start.
@@ -263,6 +264,20 @@ func (s *campaignService) enqueueCampaignWakeup(ctx context.Context, campaignID 
 		default:
 			sentry.CaptureException(err)
 			return errx.InternalError()
+		}
+	}
+
+	// Starting inside an explicitly enabled window should feel immediate. The
+	// scheduler's normal pacing intentionally spaces later deliveries across the
+	// day, but applying that interval to the very first wakeup made a newly
+	// launched 24/7 campaign appear stalled for up to an hour. A real deferral
+	// (capacity, cooldown, health, or new-lead cap) still keeps its computed time.
+	if !deferred {
+		if campaign, cerr := s.campaignRepository.GetByID(ctx, campaignID); cerr == nil && campaign != nil {
+			now := time.Now().UTC()
+			if campaignWindowOpenNow(campaign, now) {
+				nextTime = now.Add(2 * time.Second)
+			}
 		}
 	}
 
@@ -301,6 +316,36 @@ func (s *campaignService) enqueueCampaignWakeup(ctx context.Context, campaignID 
 	}
 
 	return nil
+}
+
+// campaignWindowOpenNow is deliberately conservative: it only opts into an
+// immediate first wakeup when the campaign has explicit per-day windows and the
+// current local minute falls inside one. Legacy schedules keep the scheduler's
+// computed time, preserving their date/day constraints.
+func campaignWindowOpenNow(campaign *models.Campaign, now time.Time) bool {
+	if campaign == nil || campaign.ScheduleWindows.IsEmpty() {
+		return false
+	}
+	if campaign.StartDate != nil && now.Before(*campaign.StartDate) {
+		return false
+	}
+	if campaign.EndDate != nil && now.After(*campaign.EndDate) {
+		return false
+	}
+	location := time.UTC
+	if campaign.Timezone != "" {
+		if loaded, err := time.LoadLocation(campaign.Timezone); err == nil {
+			location = loaded
+		}
+	}
+	local := now.In(location)
+	minute := local.Hour()*60 + local.Minute()
+	for _, interval := range campaign.ScheduleWindows[int(local.Weekday())] {
+		if minute >= interval.Start && minute < interval.End {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *campaignService) StopCampaign(ctx context.Context, orgID uuid.UUID, campaignID string) *errx.Error {
