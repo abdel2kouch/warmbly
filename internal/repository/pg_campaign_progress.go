@@ -357,34 +357,41 @@ func (r *campaignProgressRepository) ClaimInstantFire(ctx context.Context, campa
 // GetCampaignProgress retrieves overall campaign progress statistics
 func (r *campaignProgressRepository) GetCampaignProgress(ctx context.Context, campaignID uuid.UUID) (*CampaignProgress, error) {
 	query := `
-		WITH campaign_stats AS (
+		-- Aggregate each relation independently. Joining leads, sequences, and
+		-- progress in one aggregate multiplies progress rows by every lead and
+		-- sequence (e.g. 342 leads x 3 sends appeared as 1,026 sends).
+		WITH lead_stats AS (
+			SELECT COUNT(*)::int AS total_contacts
+			FROM campaign_leads
+			WHERE campaign_id = $1
+		), sequence_stats AS (
+			SELECT COUNT(*)::int AS total_sequences
+			FROM sequences
+			WHERE campaign_id = $1
+		), delivery_stats AS (
 			SELECT
-				COUNT(DISTINCT cl.contact_id) as total_contacts,
-				COUNT(DISTINCT s.id) as total_sequences,
-				COUNT(CASE WHEN ccp.sent_at IS NOT NULL THEN 1 END) as emails_sent,
-				COUNT(CASE WHEN ccp.opened_at IS NOT NULL THEN 1 END) as emails_opened,
-				COUNT(CASE WHEN ccp.clicked_at IS NOT NULL THEN 1 END) as emails_clicked,
-				COUNT(CASE WHEN ccp.replied_at IS NOT NULL THEN 1 END) as emails_replied,
-				COUNT(CASE WHEN ccp.bounced_at IS NOT NULL THEN 1 END) as emails_bounced,
-				COUNT(CASE WHEN ccp.complained_at IS NOT NULL THEN 1 END) as emails_complained
-			FROM campaigns c
-			LEFT JOIN campaign_leads cl ON c.id = cl.campaign_id
-			LEFT JOIN sequences s ON c.id = s.campaign_id
-			LEFT JOIN campaign_contact_progress ccp ON c.id = ccp.campaign_id
-			WHERE c.id = $1
-			GROUP BY c.id
+				COUNT(*) FILTER (WHERE sent_at IS NOT NULL)::int AS emails_sent,
+				COUNT(*) FILTER (WHERE opened_at IS NOT NULL)::int AS emails_opened,
+				COUNT(*) FILTER (WHERE clicked_at IS NOT NULL)::int AS emails_clicked,
+				COUNT(*) FILTER (WHERE replied_at IS NOT NULL)::int AS emails_replied,
+				COUNT(*) FILTER (WHERE bounced_at IS NOT NULL)::int AS emails_bounced,
+				COUNT(*) FILTER (WHERE complained_at IS NOT NULL)::int AS emails_complained
+			FROM campaign_contact_progress
+			WHERE campaign_id = $1
 		)
 		SELECT
-			total_contacts,
-			total_sequences,
-			emails_sent,
-			(total_contacts * total_sequences) - emails_sent as emails_pending,
-			emails_opened,
-			emails_clicked,
-			emails_replied,
-			emails_bounced,
-			emails_complained
-		FROM campaign_stats
+			lead_stats.total_contacts,
+			sequence_stats.total_sequences,
+			delivery_stats.emails_sent,
+			GREATEST((lead_stats.total_contacts * sequence_stats.total_sequences) - delivery_stats.emails_sent, 0) AS emails_pending,
+			delivery_stats.emails_opened,
+			delivery_stats.emails_clicked,
+			delivery_stats.emails_replied,
+			delivery_stats.emails_bounced,
+			delivery_stats.emails_complained
+		FROM lead_stats
+		CROSS JOIN sequence_stats
+		CROSS JOIN delivery_stats
 	`
 
 	progress := &CampaignProgress{}
@@ -765,6 +772,9 @@ func (r *campaignProgressRepository) FindNextRoutedPair(ctx context.Context, cam
 		SELECT cl.contact_id,
 		       lp.sequence_id, lp.sent_at, lp.opened_at, lp.clicked_at, lp.replied_at, COALESCE(lp.reply_class, ''), COALESCE(lp.ai_label, ''),
 		       COALESCE(ss.ids, '{}') AS sent_ids,
+		       COALESCE(fs.sequence_ids, '{}') AS failed_sequence_ids,
+		       COALESCE(fs.failure_counts, '{}') AS failure_counts,
+		       COALESCE(fs.last_failed_at, '{}'::timestamptz[]) AS last_failed_at,
 		       EXISTS (
 		         SELECT 1 FROM campaign_contact_progress rp
 		         WHERE rp.campaign_id = $1 AND rp.contact_id = cl.contact_id AND rp.replied_at IS NOT NULL
@@ -782,6 +792,21 @@ func (r *campaignProgressRepository) FindNextRoutedPair(ctx context.Context, cam
 			FROM campaign_contact_progress p2
 			WHERE p2.campaign_id = $1 AND p2.contact_id = cl.contact_id AND p2.sent_at IS NOT NULL
 		) ss ON true
+		LEFT JOIN LATERAL (
+			SELECT
+				array_agg(sequence_id ORDER BY sequence_id) AS sequence_ids,
+				array_agg(failure_count ORDER BY sequence_id) AS failure_counts,
+				array_agg(last_failed_at ORDER BY sequence_id) AS last_failed_at
+			FROM (
+				SELECT ct.sequence_id, COUNT(*)::int AS failure_count, MAX(t.updated_at) AS last_failed_at
+				FROM tasks t
+				JOIN campaign_tasks ct ON ct.task_id = t.id
+				WHERE ct.campaign_id = $1
+				  AND ct.contact_id = cl.contact_id
+				  AND t.status = 'failed'
+				GROUP BY ct.sequence_id
+			) failed_steps
+		) fs ON true
 		WHERE cl.campaign_id = $1
 		  AND NOT EXISTS (
 		    SELECT 1 FROM campaign_contact_progress b
@@ -809,8 +834,11 @@ func (r *campaignProgressRepository) FindNextRoutedPair(ctx context.Context, cam
 		var sentAt, openedAt, clickedAt, repliedAt *time.Time
 		var replyClass, aiLabel string
 		var sentIDs []uuid.UUID
+		var failedIDs []uuid.UUID
+		var failedCounts []int
+		var lastFailedAt []time.Time
 		var hasReplied bool
-		if serr := rows.Scan(&contactID, &lastSeq, &sentAt, &openedAt, &clickedAt, &repliedAt, &replyClass, &aiLabel, &sentIDs, &hasReplied); serr != nil {
+		if serr := rows.Scan(&contactID, &lastSeq, &sentAt, &openedAt, &clickedAt, &repliedAt, &replyClass, &aiLabel, &sentIDs, &failedIDs, &failedCounts, &lastFailedAt, &hasReplied); serr != nil {
 			return nil, nil, serr
 		}
 
@@ -873,6 +901,30 @@ func (r *campaignProgressRepository) FindNextRoutedPair(ctx context.Context, cam
 		if already {
 			continue
 		}
+		// A delivery failure is not a new lead. Without this guard the reconciler
+		// creates a new task for the same recipient indefinitely. Retry a step at
+		// most twice, with a recipient-specific backoff, then leave that step
+		// failed so other contacts can continue normally.
+		for i, failedID := range failedIDs {
+			if failedID != *res.target || i >= len(failedCounts) || i >= len(lastFailedAt) {
+				continue
+			}
+			if failedCounts[i] >= 3 {
+				already = true
+				break
+			}
+			retryAfter := lastFailedAt[i].Add(campaignRetryBackoff(failedCounts[i]))
+			if retryAfter.After(time.Now()) && (earliestWait == nil || retryAfter.Before(*earliestWait)) {
+				wait := retryAfter
+				earliestWait = &wait
+			}
+			// The target is either terminally failed or temporarily backed off.
+			already = true
+			break
+		}
+		if already {
+			continue
+		}
 		return &ContactSequencePair{ContactID: contactID, SequenceID: *res.target, IsNewLead: isNew}, nil, nil
 	}
 	if rerr := rows.Err(); rerr != nil {
@@ -881,6 +933,20 @@ func (r *campaignProgressRepository) FindNextRoutedPair(ctx context.Context, cam
 	// Nobody sendable now. If contacts are waiting on a window, hand back the
 	// soonest re-check time so the scheduler defers rather than completing.
 	return nil, earliestWait, nil
+}
+
+// campaignRetryBackoff avoids immediately rotating a transient provider
+// transport failure through every mailbox. A third failed attempt is terminal
+// for that campaign step; see FindNextRoutedPair.
+func campaignRetryBackoff(failures int) time.Duration {
+	switch failures {
+	case 1:
+		return 5 * time.Minute
+	case 2:
+		return 20 * time.Minute
+	default:
+		return 0
+	}
 }
 
 // branchHasPositiveReplyCondition reports whether a branch is a "reply branch":
